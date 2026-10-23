@@ -1,5 +1,4 @@
-def main():
-    print("Hello from n8n-transcriper!")
+from n8n_to_python.cli.main import main
 
 
 if __name__ == "__main__":
