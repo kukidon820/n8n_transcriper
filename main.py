@@ -1,5 +1,6 @@
-from n8n_to_python.cli.main import main
+"""Запускает Typer CLI при выполнении корневого скрипта проекта."""
 
+from n8n_to_python.cli.main import main
 
 if __name__ == "__main__":
     main()
