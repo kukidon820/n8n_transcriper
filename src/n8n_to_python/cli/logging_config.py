@@ -6,11 +6,17 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+# Маркер позволяет при повторном запуске IDE заменить свои handlers,
+# не добавляя дублирующие сообщения в консоль и файл.
 _HANDLER_MARKER = "n8n_to_python_logging_handler"
 
 
 def configure_logging() -> Path:
-    """Настроить понятный вывод в консоль и подробный файл лога."""
+    """Настроить пользовательский console-лог и подробный файл.
+
+    В консоль идут сообщения уровня INFO и выше, в файл — DEBUG и выше.
+    Возвращается путь к файлу лога, чтобы его можно было показать или проверить.
+    """
     log_directory = Path.cwd() / "logs"
     log_directory.mkdir(parents=True, exist_ok=True)
     log_file = log_directory / "n8n-to-python.log"
