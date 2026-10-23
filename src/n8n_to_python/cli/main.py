@@ -22,13 +22,14 @@ def configure_cli() -> None:
 
 
 def main() -> None:
-    """Запустить CLI из консоли или IDE."""
+    """Настроить логи и запустить Typer CLI из консоли или IDE."""
     configure_logging()
     try:
         app()
     except Exception as error:
         logger.error("Не удалось выполнить команду: %s", error)
         logger.debug("Подробная информация об ошибке", exc_info=True)
+        # CLI возвращает ненулевой код, чтобы оболочка видела неуспешный запуск.
         raise typer.Exit(code=1)
 
 

@@ -1,3 +1,5 @@
+"""Проверки передачи байтов источника в Pydantic-модель workflow."""
+
 from pathlib import Path
 
 import pytest
@@ -12,9 +14,8 @@ FIXTURES_DIRECTORY = Path(__file__).parent / "fixtures"
 
 @pytest.mark.asyncio
 async def test_loader_reads_local_file_and_returns_validated_workflow() -> None:
-    source = LocalFileWorkflowSource(
-        path=FIXTURES_DIRECTORY / "workflow.json"
-    )
+    """Загрузить локальную фикстуру и получить заполненный объект Workflow."""
+    source = LocalFileWorkflowSource(path=FIXTURES_DIRECTORY / "workflow.json")
 
     workflow = await WorkflowLoader(source).load()
 
@@ -25,9 +26,8 @@ async def test_loader_reads_local_file_and_returns_validated_workflow() -> None:
 
 @pytest.mark.asyncio
 async def test_loader_rejects_json_with_invalid_workflow_shape() -> None:
-    source = LocalFileWorkflowSource(
-        path=FIXTURES_DIRECTORY / "invalid_workflow.json"
-    )
+    """Убедиться, что форма JSON проверяется Pydantic-моделью."""
+    source = LocalFileWorkflowSource(path=FIXTURES_DIRECTORY / "invalid_workflow.json")
 
     with pytest.raises(ValidationError):
         await WorkflowLoader(source).load()
@@ -35,6 +35,7 @@ async def test_loader_rejects_json_with_invalid_workflow_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_loader_propagates_missing_file_error() -> None:
+    """Убедиться, что ошибка источника доходит до вызывающего кода."""
     source = LocalFileWorkflowSource(
         path=Path("missing.json"),
         search_dir=FIXTURES_DIRECTORY,
