@@ -5,6 +5,7 @@ from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
+from ..application.models.email_delivery_result import EmailDeliveryResult
 from ..application.models.outgoing_email import OutgoingEmail
 from ..application.models.postgres_query_result import PostgresQueryResult
 from ..application.ports.data_table_store import (
@@ -51,22 +52,32 @@ class PostgresExecutor:
 
         input_items = items or (WorkflowItem(json={}),)
         output: list[WorkflowItem] = []
+        paired_input_indexes: list[int | None] = []
         for item_index, item in enumerate(input_items):
-            query = self._expressions.evaluate(self._parameters.query, item, item_index=item_index)
-            replacements = self._resolve_replacements(item, item_index)
+            query = self._expressions.evaluate(
+                self._parameters.query, item, item_index=item_index, context=context
+            )
+            replacements = self._resolve_replacements(item, item_index, context)
             statement, bind_values = self._bind_query(query, replacements)
             result: PostgresQueryResult = await client.execute_query(statement, bind_values)
             if result.rows:
                 output.extend(WorkflowItem(json=row, binary=item.binary) for row in result.rows)
+                paired_input_indexes.extend(item_index if items else None for _ in result.rows)
             else:
                 output.append(WorkflowItem(json={"rowCount": result.row_count}, binary=item.binary))
-        return NodeResult(outputs=(tuple(output),))
+                paired_input_indexes.append(item_index if items else None)
+        return NodeResult(
+            outputs=(tuple(output),),
+            paired_input_indexes=(tuple(paired_input_indexes),),
+        )
 
-    def _resolve_replacements(self, item: WorkflowItem, item_index: int) -> list[Any]:
+    def _resolve_replacements(
+        self, item: WorkflowItem, item_index: int, context: NodeExecutionContext
+    ) -> list[Any]:
         raw = self._parameters.query_replacement
         if raw is None:
             return []
-        value = self._expressions.evaluate(raw, item, item_index=item_index)
+        value = self._expressions.evaluate(raw, item, item_index=item_index, context=context)
         return value if isinstance(value, list) else [value]
 
     @staticmethod
@@ -189,14 +200,18 @@ class DataTableExecutor:
             )
         inputs = items or ((WorkflowItem(json={}),) if self._parameters.operation == "get" else ())
         results: list[WorkflowItem] = []
+        paired_input_indexes: list[int | None] = []
         for item_index, item in enumerate(inputs):
             table_id = self._expressions.evaluate(
-                self._parameters.data_table_id.value, item, item_index=item_index
+                self._parameters.data_table_id.value,
+                item,
+                item_index=item_index,
+                context=context,
             )
             if not isinstance(table_id, str) or not table_id.strip():
                 raise UnsupportedNodeConfigurationError("dataTableId должен быть непустой строкой.")
-            values = self._resolve_columns(item, item_index)
-            conditions = self._resolve_conditions(item, item_index)
+            values = self._resolve_columns(item, item_index, context)
+            conditions = self._resolve_conditions(item, item_index, context)
             rows = await store.execute_row_operation(
                 table_id=table_id,
                 operation=self._parameters.operation,
@@ -209,14 +224,22 @@ class DataTableExecutor:
             if self._parameters.operation == "rowExists":
                 if rows:
                     results.append(item)
+                    paired_input_indexes.append(item_index if items else None)
             elif self._parameters.operation == "rowNotExists":
                 if not rows:
                     results.append(item)
+                    paired_input_indexes.append(item_index if items else None)
             elif self._parameters.operation != "deleteRows" or self._parameters.options.dry_run:
                 results.extend(WorkflowItem(json=row, binary=item.binary) for row in rows)
-        return NodeResult(outputs=(tuple(results),))
+                paired_input_indexes.extend(item_index if items else None for _ in rows)
+        return NodeResult(
+            outputs=(tuple(results),),
+            paired_input_indexes=(tuple(paired_input_indexes),),
+        )
 
-    def _resolve_columns(self, item: WorkflowItem, item_index: int) -> dict[str, Any]:
+    def _resolve_columns(
+        self, item: WorkflowItem, item_index: int, context: NodeExecutionContext
+    ) -> dict[str, Any]:
         mapping = self._parameters.columns
         if mapping.mapping_mode == "autoMapInputData":
             return {
@@ -225,18 +248,20 @@ class DataTableExecutor:
                 if key not in {"id", "createdAt", "updatedAt"}
             }
         return {
-            key: self._expressions.evaluate(value, item, item_index=item_index)
+            key: self._expressions.evaluate(value, item, item_index=item_index, context=context)
             for key, value in mapping.value.items()
         }
 
     def _resolve_conditions(
-        self, item: WorkflowItem, item_index: int
+        self, item: WorkflowItem, item_index: int, context: NodeExecutionContext
     ) -> tuple[DataTableCondition, ...]:
         return tuple(
             (
                 condition.key_name,
                 condition.condition,
-                self._expressions.evaluate(condition.key_value, item, item_index=item_index),
+                self._expressions.evaluate(
+                    condition.key_value, item, item_index=item_index, context=context
+                ),
             )
             for condition in self._parameters.filters.conditions
         )
@@ -288,22 +313,37 @@ class EmailSendExecutor:
             raise UnsupportedNodeConfigurationError(
                 "Email требует EmailSender в runtime services['email_sender']."
             )
+        output: list[WorkflowItem] = []
         for item_index, item in enumerate(items):
-            await sender.send(self._create_message(item, item_index))
-        return NodeResult(outputs=(items,))
+            receipt = await sender.send(self._create_message(item, item_index, context))
+            if not isinstance(receipt, EmailDeliveryResult):
+                raise UnsupportedNodeConfigurationError(
+                    "EmailSender.send() должен вернуть EmailDeliveryResult."
+                )
+            output.append(WorkflowItem(json=receipt.model_dump(mode="json", by_alias=True)))
+        return NodeResult(
+            outputs=(tuple(output),),
+            paired_input_indexes=(tuple(range(len(output))),),
+        )
 
-    def _create_message(self, item: WorkflowItem, item_index: int) -> OutgoingEmail:
+    def _create_message(
+        self, item: WorkflowItem, item_index: int, context: NodeExecutionContext
+    ) -> OutgoingEmail:
         """Вычислить n8n expressions и построить типизированное письмо."""
-        sender = self._evaluate(self._parameters.from_email, item, item_index)
-        recipients = self._evaluate(self._parameters.to_email, item, item_index)
-        subject = self._evaluate(self._parameters.subject, item, item_index)
+        sender = self._evaluate(self._parameters.from_email, item, item_index, context)
+        recipients = self._evaluate(self._parameters.to_email, item, item_index, context)
+        subject = self._evaluate(self._parameters.subject, item, item_index, context)
         if not all(isinstance(value, str) for value in (sender, recipients, subject)):
             raise UnsupportedNodeConfigurationError("From, To и Subject должны быть строками.")
-        text_body = self._evaluate(self._parameters.text, item, item_index)
-        html_body = self._evaluate(self._parameters.html, item, item_index)
-        cc = self._resolve_optional_addresses(self._parameters.options.cc_email, item, item_index)
-        bcc = self._resolve_optional_addresses(self._parameters.options.bcc_email, item, item_index)
-        reply_to = self._evaluate(self._parameters.options.reply_to, item, item_index)
+        text_body = self._evaluate(self._parameters.text, item, item_index, context)
+        html_body = self._evaluate(self._parameters.html, item, item_index, context)
+        cc = self._resolve_optional_addresses(
+            self._parameters.options.cc_email, item, item_index, context
+        )
+        bcc = self._resolve_optional_addresses(
+            self._parameters.options.bcc_email, item, item_index, context
+        )
+        reply_to = self._evaluate(self._parameters.options.reply_to, item, item_index, context)
         if reply_to is not None and not isinstance(reply_to, str):
             raise UnsupportedNodeConfigurationError("Поле Email Reply-To должно быть строкой.")
         if text_body is not None and not isinstance(text_body, str):
@@ -326,21 +366,24 @@ class EmailSendExecutor:
         value: str | None,
         item: WorkflowItem,
         item_index: int,
+        context: NodeExecutionContext,
     ) -> tuple[str, ...]:
         """Разобрать необязательный список CC/BCC после вычисления expression."""
         if value is None:
             return ()
-        resolved = self._evaluate(value, item, item_index)
+        resolved = self._evaluate(value, item, item_index, context)
         if not isinstance(resolved, str):
             raise UnsupportedNodeConfigurationError("Список Email recipients должен быть строкой.")
         return tuple(_email_addresses(resolved))
 
-    def _evaluate(self, value: Any, item: WorkflowItem, item_index: int) -> Any:
+    def _evaluate(
+        self, value: Any, item: WorkflowItem, item_index: int, context: NodeExecutionContext
+    ) -> Any:
         """Разрешить строковое поле или оставить отсутствующее поле пустым."""
         return (
             None
             if value is None
-            else self._expressions.evaluate(value, item, item_index=item_index)
+            else self._expressions.evaluate(value, item, item_index=item_index, context=context)
         )
 
 
