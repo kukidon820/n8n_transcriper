@@ -13,7 +13,7 @@ from n8n_to_python.converters.errors import (
 from n8n_to_python.converters.nodes import default_node_converter_registry
 from n8n_to_python.domain.models.workflow import Workflow
 from n8n_to_python.runtime.engine import WorkflowExecutionEngine
-from n8n_to_python.runtime.errors import NodeExecutionError
+from n8n_to_python.runtime.errors import IncompleteMergeError, NodeExecutionError
 from n8n_to_python.runtime.executors import NodeExecutionContext
 from n8n_to_python.runtime.models import WorkflowItem
 
@@ -34,9 +34,13 @@ def set_input_fields(workflow: Workflow, *, score: int, route: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_manual_edit_fields_if_and_switch_route_a() -> None:
+@pytest.mark.parametrize("set_version", [3, 3.1, 3.2, 3.3, 3.4, 3.5])
+async def test_manual_edit_fields_if_and_switch_route_a(set_version: float) -> None:
     """Проверить запуск trigger, добавление полей, true-ветку IF и правило Switch A."""
     workflow = load_workflow("converters_basic.json")
+    for node in workflow.nodes:
+        if node.type == "n8n-nodes-base.set":
+            node.type_version = set_version
     registry = default_node_converter_registry().build_runtime_registry(workflow)
 
     result = await WorkflowExecutionEngine(registry).run(workflow)
@@ -72,6 +76,34 @@ async def test_if_switch_route_other_outputs(
     result = await WorkflowExecutionEngine(registry).run(workflow)
 
     assert [output.node_name for output in result.terminal_outputs] == [expected_terminal]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("type_version", [2, 2.1, 2.2, 2.3, 2.4])
+async def test_if_version_family_executes_same_strict_condition(type_version: float) -> None:
+    """Проверить версии IF v2, которые n8n сопоставляет с одной реализацией V2."""
+    workflow = load_workflow("converters_basic.json")
+    node = next(node for node in workflow.nodes if node.type == "n8n-nodes-base.if")
+    node.type_version = type_version
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+
+    result = await WorkflowExecutionEngine(registry).run(workflow)
+
+    assert result.terminal_outputs[0].node_name == "Branch A"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("type_version", [3, 3.1, 3.2, 3.3, 3.4, 3.5])
+async def test_switch_version_family_routes_the_same_rule(type_version: float) -> None:
+    """Проверить версии Switch v3, которые n8n сопоставляет с одной реализацией V3."""
+    workflow = load_workflow("converters_basic.json")
+    node = next(node for node in workflow.nodes if node.type == "n8n-nodes-base.switch")
+    node.type_version = type_version
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+
+    result = await WorkflowExecutionEngine(registry).run(workflow)
+
+    assert result.terminal_outputs[0].node_name == "Branch A"
 
 
 @pytest.mark.asyncio
@@ -194,7 +226,10 @@ async def test_loop_batches_multiple_items_and_collects_processed_results() -> N
 
 
 @pytest.mark.asyncio
-async def test_http_request_uses_aiohttp_and_respects_the_query_parameters() -> None:
+@pytest.mark.parametrize("type_version", [4, 4.1, 4.2, 4.3, 4.4, 4.5])
+async def test_http_request_uses_aiohttp_and_respects_the_query_parameters(
+    type_version: float,
+) -> None:
     """Проверить реальный HTTP-обмен с локальным сервером без сетевых моков."""
 
     async def echo(request: web.Request) -> web.Response:
@@ -221,6 +256,7 @@ async def test_http_request_uses_aiohttp_and_respects_the_query_parameters() -> 
     port = site._server.sockets[0].getsockname()[1]
     workflow = load_workflow("converters_http.json")
     request_node = next(node for node in workflow.nodes if node.name == "Request")
+    request_node.type_version = type_version
     request_node.parameters["url"] = f"http://127.0.0.1:{port}/echo"
     registry = default_node_converter_registry().build_runtime_registry(workflow)
 
@@ -251,6 +287,35 @@ async def test_http_request_uses_aiohttp_and_respects_the_query_parameters() -> 
         assert raised.value.__cause__.status == 503
     finally:
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_merge_append_waits_for_both_inputs_and_preserves_input_order() -> None:
+    """Объединить items двух реальных ветвей по порядку входных портов Merge."""
+    workflow = load_workflow("converters_merge.json")
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+
+    result = await WorkflowExecutionEngine(registry).run(workflow)
+
+    merge_calls = [record for record in result.executions if record.node_name == "Merge"]
+    assert [record.input_port.index for record in merge_calls] == [0, 1]
+    assert merge_calls[0].output_item_counts == (None,)
+    assert merge_calls[1].output_item_counts == (2,)
+    assert [item.json_data for item in result.terminal_outputs[0].items] == [
+        {"branch": "first"},
+        {"branch": "second"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_merge_append_fails_when_a_configured_input_never_arrives() -> None:
+    """Не возвращать workflow с незавершённым Merge как успешный пустой результат."""
+    workflow = load_workflow("converters_merge.json")
+    workflow.connections["Second branch"]["main"][0] = []
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+
+    with pytest.raises(IncompleteMergeError, match=r"missing input ports \[1\]"):
+        await WorkflowExecutionEngine(registry).run(workflow)
 
 
 def test_http_request_rejects_enabled_body_without_json_body() -> None:

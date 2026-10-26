@@ -8,7 +8,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..domain.models.workflow import Workflow
-from .errors import ExecutionLimitExceededError, InvalidNodeOutputError, NodeExecutionError
+from .errors import (
+    ExecutionLimitExceededError,
+    IncompleteMergeError,
+    InvalidNodeOutputError,
+    NodeExecutionError,
+)
 from .executors import NodeExecutionContext, NodeExecutorRegistry
 from .models import (
     ExecutionResult,
@@ -160,6 +165,20 @@ class WorkflowExecutionEngine:
                             input_port=target.target_input,
                         )
                     )
+
+        incomplete_merges = {
+            key: value
+            for key, value in run_state.items()
+            if key.startswith("merge-append:") and isinstance(value, dict)
+        }
+        if incomplete_merges:
+            pending = "; ".join(
+                f"{key.removeprefix('merge-append:')}: missing input ports "
+                f"{sorted(set(range(value['expected'])) - set(value['received']))} "
+                f"(received {sorted(value['received'])})"
+                for key, value in incomplete_merges.items()
+            )
+            raise IncompleteMergeError(f"Merge append завершился без всех входов: {pending}.")
 
         return ExecutionResult(
             executions=tuple(executions),
