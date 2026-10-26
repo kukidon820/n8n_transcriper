@@ -1,0 +1,7 @@
+{
+  "name": "Runtime graph without trigger",
+  "nodes": [
+    {"name": "Only node", "type": "fixture.pass", "typeVersion": 1, "position": [0, 0]}
+  ],
+  "connections": {}
+}

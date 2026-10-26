@@ -1,0 +1,18 @@
+{
+  "name": "Runtime branching graph",
+  "nodes": [
+    {"name": "Trigger", "type": "fixture.trigger", "typeVersion": 1, "position": [0, 0]},
+    {"name": "Branch", "type": "fixture.branch", "typeVersion": 1, "position": [200, 0]},
+    {"name": "Left", "type": "fixture.pass", "typeVersion": 1, "position": [400, -100]},
+    {"name": "Right", "type": "fixture.pass", "typeVersion": 1, "position": [400, 100]}
+  ],
+  "connections": {
+    "Trigger": {"main": [[{"node": "Branch", "type": "main", "index": 0}]]},
+    "Branch": {
+      "main": [
+        [{"node": "Left", "type": "main", "index": 0}],
+        [{"node": "Right", "type": "main", "index": 0}]
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Runtime loop graph",
+  "nodes": [
+    {"name": "Trigger", "type": "fixture.trigger", "typeVersion": 1, "position": [0, 0]},
+    {"name": "Loop", "type": "fixture.loop", "typeVersion": 1, "position": [200, 0]},
+    {"name": "Body", "type": "fixture.increment", "typeVersion": 1, "position": [400, 0]},
+    {"name": "Done", "type": "fixture.pass", "typeVersion": 1, "position": [400, 200]}
+  ],
+  "connections": {
+    "Trigger": {"main": [[{"node": "Loop", "type": "main", "index": 0}]]},
+    "Loop": {
+      "main": [
+        [{"node": "Body", "type": "main", "index": 0}],
+        [{"node": "Done", "type": "main", "index": 0}]
+      ]
+    },
+    "Body": {"main": [[{"node": "Loop", "type": "main", "index": 0}]]}
+  }
+}
