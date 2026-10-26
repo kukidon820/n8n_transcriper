@@ -28,3 +28,7 @@ class NodeExecutionError(WorkflowRuntimeError):
 
 class ExecutionLimitExceededError(WorkflowRuntimeError):
     """Runtime остановил граф, превысивший лимит вызовов узлов."""
+
+
+class IncompleteMergeError(WorkflowRuntimeError):
+    """Merge получил часть входов и не может сформировать корректный результат."""

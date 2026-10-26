@@ -2,7 +2,9 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, Protocol, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -187,6 +189,55 @@ class LoopParameters(_StrictParameters):
     options: LoopOptions = Field(default_factory=LoopOptions)
 
 
+class ScheduleInterval(_StrictParameters):
+    """Одна настройка интервала Schedule Trigger v1.3."""
+
+    field: Literal["seconds", "minutes", "hours", "days", "weeks", "months", "cronExpression"] = (
+        "days"
+    )
+    seconds_interval: int = Field(default=30, alias="secondsInterval", ge=1, le=59)
+    minutes_interval: int = Field(default=5, alias="minutesInterval", ge=1, le=59)
+    hours_interval: int = Field(default=1, alias="hoursInterval", ge=1, le=23)
+    days_interval: int = Field(default=1, alias="daysInterval", ge=1, le=31)
+    weeks_interval: int = Field(default=1, alias="weeksInterval", ge=1)
+    months_interval: int = Field(default=1, alias="monthsInterval", ge=1)
+    trigger_at_day_of_month: int = Field(default=1, alias="triggerAtDayOfMonth", ge=1, le=31)
+    trigger_at_day: list[int] = Field(default_factory=lambda: [0], alias="triggerAtDay")
+    trigger_at_hour: int = Field(default=0, alias="triggerAtHour", ge=0, le=23)
+    trigger_at_minute: int = Field(default=0, alias="triggerAtMinute", ge=0, le=59)
+    expression: str | None = None
+
+    @model_validator(mode="after")
+    def validate_interval_fields(self) -> Self:
+        """Проверить только поля, которые управляют выбранным видом расписания."""
+        if self.field == "cronExpression":
+            if not self.expression or not self.expression.strip():
+                raise ValueError("Для cronExpression требуется непустое expression.")
+        elif self.field == "weeks" and any(day not in range(7) for day in self.trigger_at_day):
+            raise ValueError("triggerAtDay должен содержать дни недели от 0 до 6.")
+        return self
+
+
+class ScheduleRule(_StrictParameters):
+    """Список правил срабатывания из `parameters.rule` n8n."""
+
+    interval: list[ScheduleInterval] = Field(default_factory=lambda: [ScheduleInterval()])
+
+
+class ScheduleTriggerParameters(_StrictParameters):
+    """Проверенные правила Schedule Trigger; сам таймер запускает вызывающий runtime."""
+
+    rule: ScheduleRule = Field(default_factory=ScheduleRule)
+
+
+class MergeParameters(_StrictParameters):
+    """Поддерживаемый режим Merge v3.2 для последовательного объединения inputs."""
+
+    mode: Literal["append"]
+    number_inputs: int = Field(default=2, alias="numberInputs", ge=2, le=10, strict=True)
+    options: EmptyOptions = Field(default_factory=EmptyOptions)
+
+
 class NodeConverter(Protocol):
     """Проверяет узел и создаёт его runtime-обработчик."""
 
@@ -293,10 +344,27 @@ class NodeConverterRegistry:
         except NodeConversionError:
             return False
 
-    def build_runtime_registry(self, workflow: Workflow) -> NodeExecutorRegistry:
-        """Проверить каждый узел и собрать реестр для исполнения графа."""
+    def build_runtime_registry(
+        self,
+        workflow: Workflow,
+        *,
+        node_overrides: Mapping[str, NodeExecutor] | None = None,
+        ignored_node_names: frozenset[str] = frozenset(),
+    ) -> NodeExecutorRegistry:
+        """Проверить узлы и собрать реестр runtime-обработчиков.
+
+        `node_overrides` позволяет backend-у подменить обработчик конкретного узла.
+        `ignored_node_names` предназначен для вспомогательных AI-моделей, инструментов
+        и памяти: вызывающий код должен предварительно проверить их связи и версии.
+        """
         executors: dict[str, NodeExecutor] = {}
+        overrides = node_overrides or {}
         for node in workflow.nodes:
+            if node.name in ignored_node_names:
+                continue
+            if node.name in overrides:
+                executors[node.name] = overrides[node.name]
+                continue
             converter = self._converters.get((node.type, node.type_version))
             if converter is None:
                 supported_versions = sorted(
@@ -412,6 +480,136 @@ class ManualTriggerExecutor:
     ) -> NodeResult:
         """Выдать один начальный item без пользовательских данных."""
         return NodeResult(outputs=(items or (WorkflowItem(json={}),),))
+
+
+class ScheduleTriggerExecutor:
+    """Сформировать item одного расписанного события при вызове runtime."""
+
+    is_trigger = True
+
+    def __init__(self, parameters: ScheduleTriggerParameters):
+        """Сохранить валидированные правила; планирование оставлено вызывающему скрипту."""
+        self._parameters = parameters
+
+    async def execute(
+        self,
+        node: WorkflowNode,
+        items: tuple[WorkflowItem, ...],
+        context: NodeExecutionContext,
+    ) -> NodeResult:
+        """Вернуть данные времени срабатывания, как их формирует n8n Schedule Trigger."""
+        timezone_name = context.services.get("timezone", "UTC")
+        if not isinstance(timezone_name, str):
+            raise UnsupportedNodeConfigurationError("timezone должен быть строковым именем зоны.")
+        try:
+            timezone = ZoneInfo(timezone_name)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise UnsupportedNodeConfigurationError(
+                f"Неизвестная временная зона Schedule Trigger: {timezone_name!r}."
+            ) from error
+
+        scheduled_at = context.services.get("schedule_time")
+        if scheduled_at is None:
+            scheduled_at = datetime.now(timezone)
+        elif not isinstance(scheduled_at, datetime):
+            raise UnsupportedNodeConfigurationError("schedule_time должен быть datetime.")
+        elif scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone)
+        else:
+            scheduled_at = scheduled_at.astimezone(timezone)
+
+        result = _schedule_trigger_item(scheduled_at, timezone_name)
+        return NodeResult(outputs=((WorkflowItem(json=result),),))
+
+
+class MergeAppendExecutor:
+    """Дождаться каждого входа и объединить их items по порядку input index."""
+
+    is_trigger = False
+
+    def __init__(self, parameters: MergeParameters):
+        """Сохранить количество обязательных Merge inputs."""
+        self._parameters = parameters
+
+    async def execute(
+        self,
+        node: WorkflowNode,
+        items: tuple[WorkflowItem, ...],
+        context: NodeExecutionContext,
+    ) -> NodeResult:
+        """Буферизовать входы до прибытия каждого порта, затем выдать один append output."""
+        input_port = context.input_port
+        if input_port is None or input_port.type != "main":
+            raise UnsupportedNodeConfigurationError("Merge append требует main input.")
+        if input_port.index >= self._parameters.number_inputs:
+            raise UnsupportedNodeConfigurationError(
+                f"Merge получил input {input_port.index}, но настроено "
+                f"{self._parameters.number_inputs} inputs."
+            )
+
+        state_key = f"merge-append:{node.id or node.name}"
+        merge_state: dict[str, Any] = context.state.setdefault(
+            state_key,
+            {"expected": self._parameters.number_inputs, "received": {}},
+        )
+        received: dict[int, tuple[WorkflowItem, ...]] = merge_state["received"]
+        received[input_port.index] = (*received.get(input_port.index, ()), *items)
+        expected_indexes = set(range(merge_state["expected"]))
+        if set(received) != expected_indexes:
+            return NodeResult(outputs=(None,))
+
+        merged = tuple(
+            item
+            for input_index in range(self._parameters.number_inputs)
+            for item in received[input_index]
+        )
+        del context.state[state_key]
+        return NodeResult(outputs=(merged,))
+
+
+def _schedule_trigger_item(scheduled_at: datetime, timezone_name: str) -> dict[str, str]:
+    """Построить словарь даты и времени одного события Schedule Trigger."""
+    month_names = (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    )
+    weekday_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    day = scheduled_at.day
+    ordinal = "th" if 10 <= day % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    hour_12 = scheduled_at.hour % 12 or 12
+    meridiem = "am" if scheduled_at.hour < 12 else "pm"
+    offset = scheduled_at.utcoffset()
+    offset_minutes = int(offset.total_seconds() // 60) if offset is not None else 0
+    sign = "+" if offset_minutes >= 0 else "-"
+    offset_hours, offset_minutes = divmod(abs(offset_minutes), 60)
+    timezone_offset = f"UTC{sign}{offset_hours:02d}:{offset_minutes:02d}"
+    readable_time = f"{hour_12}:{scheduled_at.minute:02d}:{scheduled_at.second:02d} {meridiem}"
+    return {
+        "timestamp": scheduled_at.isoformat(timespec="milliseconds"),
+        "Readable date": (
+            f"{month_names[scheduled_at.month - 1]} {day}{ordinal} {scheduled_at.year}, "
+            f"{readable_time}"
+        ),
+        "Readable time": readable_time,
+        "Day of week": weekday_names[scheduled_at.weekday()],
+        "Year": f"{scheduled_at.year:04d}",
+        "Month": month_names[scheduled_at.month - 1],
+        "Day of month": f"{day:02d}",
+        "Hour": f"{scheduled_at.hour:02d}",
+        "Minute": f"{scheduled_at.minute:02d}",
+        "Second": f"{scheduled_at.second:02d}",
+        "Timezone": f"{timezone_name} ({timezone_offset})",
+    }
 
 
 class WebhookTriggerExecutor:
@@ -641,17 +839,15 @@ def default_node_converter_registry() -> NodeConverterRegistry:
             "n8n-nodes-base.manualTrigger", 1, ManualTriggerParameters, ManualTriggerExecutor
         ),
         ValidatedNodeConverter(
-            "n8n-nodes-base.webhook", 2.1, WebhookParameters, WebhookTriggerExecutor
+            "n8n-nodes-base.scheduleTrigger",
+            1.3,
+            ScheduleTriggerParameters,
+            ScheduleTriggerExecutor,
         ),
+        ValidatedNodeConverter("n8n-nodes-base.merge", 3.2, MergeParameters, MergeAppendExecutor),
         ValidatedNodeConverter("n8n-nodes-base.code", 2, PythonCodeParameters, PythonCodeExecutor),
-        ValidatedNodeConverter("n8n-nodes-base.set", 3.4, EditFieldsParameters, EditFieldsExecutor),
-        ValidatedNodeConverter("n8n-nodes-base.if", 2.2, IfParameters, IfExecutor),
-        ValidatedNodeConverter("n8n-nodes-base.switch", 3.2, SwitchParameters, SwitchExecutor),
         ValidatedNodeConverter(
             "n8n-nodes-base.splitInBatches", 3, LoopParameters, LoopOverItemsExecutor
-        ),
-        ValidatedNodeConverter(
-            "n8n-nodes-base.httpRequest", 4.5, HttpRequestParameters, HttpRequestExecutor
         ),
         ValidatedNodeConverter(
             "n8n-nodes-base.compression", 1.1, CompressionParameters, CompressionExecutor
@@ -660,15 +856,63 @@ def default_node_converter_registry() -> NodeConverterRegistry:
             "n8n-nodes-base.extractFromFile", 1.2, ExtractFileParameters, ExtractFromFileExecutor
         ),
         ValidatedNodeConverter(
+            "n8n-nodes-base.dataTable", 1, DataTableParameters, DataTableExecutor
+        ),
+        ValidatedNodeConverter(
             "n8n-nodes-base.dataTable", 1.1, DataTableParameters, DataTableExecutor
         ),
-        ValidatedNodeConverter(
-            "n8n-nodes-base.postgres", 2.6, PostgresParameters, PostgresExecutor
-        ),
-        ValidatedNodeConverter(
-            "n8n-nodes-base.emailSend", 2.1, EmailSendParameters, EmailSendExecutor
-        ),
     ]
+    shared_implementations: tuple[
+        tuple[str, tuple[float, ...], type[BaseModel], Callable[[BaseModel], NodeExecutor]], ...
+    ] = (
+        (
+            "n8n-nodes-base.webhook",
+            (1, 1.1, 2, 2.1, 2.2),
+            WebhookParameters,
+            WebhookTriggerExecutor,
+        ),
+        (
+            "n8n-nodes-base.set",
+            (3, 3.1, 3.2, 3.3, 3.4, 3.5),
+            EditFieldsParameters,
+            EditFieldsExecutor,
+        ),
+        (
+            "n8n-nodes-base.if",
+            (2, 2.1, 2.2, 2.3, 2.4),
+            IfParameters,
+            IfExecutor,
+        ),
+        (
+            "n8n-nodes-base.switch",
+            (3, 3.1, 3.2, 3.3, 3.4, 3.5),
+            SwitchParameters,
+            SwitchExecutor,
+        ),
+        (
+            "n8n-nodes-base.httpRequest",
+            (4, 4.1, 4.2, 4.3, 4.4, 4.5),
+            HttpRequestParameters,
+            HttpRequestExecutor,
+        ),
+        (
+            "n8n-nodes-base.postgres",
+            (2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8),
+            PostgresParameters,
+            PostgresExecutor,
+        ),
+        (
+            "n8n-nodes-base.emailSend",
+            (2, 2.1),
+            EmailSendParameters,
+            EmailSendExecutor,
+        ),
+    )
+    for node_type, versions, parameters_model, executor_factory in shared_implementations:
+        converters.extend(
+            ValidatedNodeConverter(node_type, version, parameters_model, executor_factory)
+            for version in versions
+        )
     return NodeConverterRegistry(
         {(converter.node_type, converter.type_version): converter for converter in converters}
     )
