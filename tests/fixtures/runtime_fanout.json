@@ -1,0 +1,16 @@
+{
+  "name": "Runtime fan-out graph",
+  "nodes": [
+    {"name": "Trigger", "type": "fixture.trigger", "typeVersion": 1, "position": [0, 0]},
+    {"name": "Left", "type": "fixture.mutate", "typeVersion": 1, "position": [200, -100], "parameters": {"value": "left"}},
+    {"name": "Right", "type": "fixture.mutate", "typeVersion": 1, "position": [200, 100], "parameters": {"value": "right"}}
+  ],
+  "connections": {
+    "Trigger": {
+      "main": [[
+        {"node": "Left", "type": "main", "index": 0},
+        {"node": "Right", "type": "main", "index": 0}
+      ]]
+    }
+  }
+}
