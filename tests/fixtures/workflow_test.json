@@ -1,0 +1,459 @@
+{
+  "name": "workflow_test — IF Switch main/AI connections",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "dc41f26f-6a34-5b3e-a007-79a1310893ec",
+      "name": "01 Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        180,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Three items exercise IF=true (A,B) and IF=false.\n// Change route to OTHER on a high-score item to test the AI branch.\nreturn [\n  { json: { id: 1, score: 90, route: 'A', message: 'Первый тест' } },\n  { json: { id: 2, score: 75, route: 'B', message: 'Второй тест' } },\n  { json: { id: 3, score: 20, route: 'A', message: 'Низкий балл' } },\n];"
+      },
+      "id": "0d6c07b2-74e9-58fe-bda8-bf32bf331514",
+      "name": "02 Create Test Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        410,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a971ba91-72ab-517f-a774-8df31b5adc6f",
+              "name": "source",
+              "value": "workflow_test.json",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "5201f59a-1439-55e8-b600-a49c0b340617",
+      "name": "03 Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6ac8bff5-9009-590b-8554-7a82f4b50bfd",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "214fa18c-5c30-5d8f-925b-ac88909b182f",
+      "name": "04 IF Score >= 50",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "70fdfffa-462d-5c6f-8f1b-3758b944858c",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "A",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "A"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "50fbf7c7-b24f-5f02-825b-a4f00da74807",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "B",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "B"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "OTHER -> AI"
+        }
+      },
+      "id": "99dc6ad5-aaf0-5ff2-ae84-b068186a10cd",
+      "name": "05 Switch Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1120,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ddf0a823-eace-5551-9e6f-05b2ea6dc398",
+              "name": "path_a",
+              "value": "A",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "fb74fc7a-c811-5649-94c5-c751eaa82db0",
+      "name": "06 Branch A",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1380,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ca47fed9-4836-51f3-a88c-cb8038dd43e1",
+              "name": "path_b",
+              "value": "B",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "67968262-8768-57c5-8560-e30b5b4d61ca",
+      "name": "07 Branch B",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1380,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2,
+        "options": {}
+      },
+      "id": "388f0b37-df35-5c92-b407-52dffcdeae1a",
+      "name": "08 Merge A + B",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1630,
+        70
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { ...$json, result: 'processed', ok: true } };"
+      },
+      "id": "5f530c64-3e6e-5743-8ba3-4af03e2575ac",
+      "name": "09 Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1870,
+        70
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { ...$json, result: 'rejected', reason: 'score < 50' } };"
+      },
+      "id": "9f70bf1f-7155-56b6-bb87-f57d71b4c843",
+      "name": "10 Rejected",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'Ответь кратко по тестовой записи: ' + JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Ты помощник для тестирования маршрутизации n8n. Отвечай на русском."
+        }
+      },
+      "id": "0b94f7a4-b06f-5149-9968-e645d5548160",
+      "name": "11 AI Agent (optional)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1420,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "440d7c30-cdbe-50a6-868e-dd0d8e0ce926",
+      "name": "12 DeepSeek Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        660
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e2461440-c87f-5e2b-98e7-92e0f9b1664d",
+      "name": "13 Calculator Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ String($json.id ?? \"workflow-test\") }}",
+        "contextWindowLength": 5
+      },
+      "id": "74a3dbe9-db5f-5685-8bd8-f4bc2b8ab86f",
+      "name": "14 Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1760,
+        660
+      ]
+    }
+  ],
+  "connections": {
+    "01 Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "02 Create Test Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 Create Test Items": {
+      "main": [
+        [
+          {
+            "node": "03 Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "04 IF Score >= 50",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 IF Score >= 50": {
+      "main": [
+        [
+          {
+            "node": "05 Switch Route",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "10 Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 Switch Route": {
+      "main": [
+        [
+          {
+            "node": "06 Branch A",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "07 Branch B",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "11 AI Agent (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 Branch A": {
+      "main": [
+        [
+          {
+            "node": "08 Merge A + B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 Branch B": {
+      "main": [
+        [
+          {
+            "node": "08 Merge A + B",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "08 Merge A + B": {
+      "main": [
+        [
+          {
+            "node": "09 Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "11 AI Agent (optional)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 Calculator Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "11 AI Agent (optional)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "11 AI Agent (optional)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
