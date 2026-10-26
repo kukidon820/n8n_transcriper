@@ -1,0 +1,19 @@
+{
+  "name": "converter basic nodes",
+  "nodes": [
+    {"id": "trigger", "name": "Manual", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {}},
+    {"id": "fields", "name": "Input fields", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [200, 0], "parameters": {"mode": "manual", "duplicateItem": false, "assignments": {"assignments": [{"id": "score", "name": "score", "value": 80, "type": "number"}, {"id": "route", "name": "route", "value": "A", "type": "string"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "if", "name": "Score check", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [400, 0], "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"id": "gte", "leftValue": "={{ $json.score }}", "rightValue": 50, "operator": {"type": "number", "operation": "gte"}}], "combinator": "and"}, "options": {}}},
+    {"id": "switch", "name": "Route", "type": "n8n-nodes-base.switch", "typeVersion": 3.2, "position": [600, 0], "parameters": {"mode": "rules", "rules": {"values": [{"conditions": {"conditions": [{"leftValue": "={{ $json.route }}", "rightValue": "A", "operator": {"type": "string", "operation": "equals"}}], "combinator": "and"}, "renameOutput": true, "outputKey": "A"}, {"conditions": {"conditions": [{"leftValue": "={{ $json.route }}", "rightValue": "B", "operator": {"type": "string", "operation": "equals"}}], "combinator": "and"}, "renameOutput": true, "outputKey": "B"}]}, "options": {"fallbackOutput": "extra"}}},
+    {"id": "low", "name": "Low score", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [600, 200], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "branch", "value": "low", "type": "string"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "a", "name": "Branch A", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [800, -100], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "branch", "value": "A", "type": "string"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "b", "name": "Branch B", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [800, 0], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "branch", "value": "B", "type": "string"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "other", "name": "Fallback", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [800, 100], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "branch", "value": "other", "type": "string"}]}, "includeOtherFields": true, "options": {}}}
+  ],
+  "connections": {
+    "Manual": {"main": [[{"node": "Input fields", "type": "main", "index": 0}]]},
+    "Input fields": {"main": [[{"node": "Score check", "type": "main", "index": 0}]]},
+    "Score check": {"main": [[{"node": "Route", "type": "main", "index": 0}], [{"node": "Low score", "type": "main", "index": 0}]]},
+    "Route": {"main": [[{"node": "Branch A", "type": "main", "index": 0}], [{"node": "Branch B", "type": "main", "index": 0}], [{"node": "Fallback", "type": "main", "index": 0}]]}
+  }
+}
