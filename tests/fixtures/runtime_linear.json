@@ -1,0 +1,12 @@
+{
+  "name": "Runtime linear graph",
+  "nodes": [
+    {"name": "Trigger", "type": "fixture.trigger", "typeVersion": 1, "position": [0, 0]},
+    {"name": "Transform", "type": "fixture.pass", "typeVersion": 1, "position": [200, 0]},
+    {"name": "Finish", "type": "fixture.pass", "typeVersion": 1, "position": [400, 0]}
+  ],
+  "connections": {
+    "Trigger": {"main": [[{"node": "Transform", "type": "main", "index": 0}]]},
+    "Transform": {"main": [[{"node": "Finish", "type": "main", "index": 0}]]}
+  }
+}
