@@ -405,10 +405,11 @@ def _condition_matches(
     item: WorkflowItem,
     evaluator: N8nExpressionEvaluator,
     item_index: int,
+    context: NodeExecutionContext,
 ) -> bool:
     """Вычислить один ограниченный оператор, не используя eval/exec."""
-    left = evaluator.evaluate(condition.left_value, item, item_index=item_index)
-    right = evaluator.evaluate(condition.right_value, item, item_index=item_index)
+    left = evaluator.evaluate(condition.left_value, item, item_index=item_index, context=context)
+    right = evaluator.evaluate(condition.right_value, item, item_index=item_index, context=context)
     kind = condition.operator.type
     operation = condition.operator.operation
     if kind == "number":
@@ -452,10 +453,11 @@ def _conditions_match(
     item: WorkflowItem,
     evaluator: N8nExpressionEvaluator,
     item_index: int,
+    context: NodeExecutionContext,
 ) -> bool:
     """Объединить условия операцией AND или OR."""
     results = [
-        _condition_matches(condition, item, evaluator, item_index)
+        _condition_matches(condition, item, evaluator, item_index, context)
         for condition in conditions.conditions
     ]
     if not results:
@@ -667,9 +669,15 @@ class EditFieldsExecutor:
         """Создать новые items, сохранив binary и выбранные исходные поля."""
         output: list[WorkflowItem] = []
         for item_index, item in enumerate(items):
+            if self._parameters.include_other_fields and not isinstance(item.json_data, dict):
+                raise UnsupportedNodeConfigurationError(
+                    f"Edit Fields {node.name!r} ожидает JSON object во входном item."
+                )
             json_data = dict(item.json_data) if self._parameters.include_other_fields else {}
             for assignment in self._parameters.assignments.assignments:
-                value = self._expressions.evaluate(assignment.value, item, item_index=item_index)
+                value = self._expressions.evaluate(
+                    assignment.value, item, item_index=item_index, context=context
+                )
                 if assignment.type == "number" and (
                     isinstance(value, bool) or not isinstance(value, (int, float))
                 ):
@@ -725,7 +733,7 @@ class IfExecutor:
             target = (
                 true_items
                 if _conditions_match(
-                    self._parameters.conditions, item, self._expressions, item_index
+                    self._parameters.conditions, item, self._expressions, item_index, context
                 )
                 else false_items
             )
@@ -760,7 +768,7 @@ class SwitchExecutor:
             matching = [
                 index
                 for index, rule in enumerate(rules)
-                if _conditions_match(rule.conditions, item, self._expressions, item_index)
+                if _conditions_match(rule.conditions, item, self._expressions, item_index, context)
             ]
             if matching and self._parameters.options.send_to_all_matching_outputs:
                 for index in matching:
