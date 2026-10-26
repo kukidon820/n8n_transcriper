@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from n8n_to_python.converters.nodes import default_node_converter_registry
 from n8n_to_python.domain.models.workflow import Workflow, WorkflowNode
 from n8n_to_python.runtime.engine import RuntimeSettings, WorkflowExecutionEngine
 from n8n_to_python.runtime.errors import (
@@ -17,6 +18,7 @@ from n8n_to_python.runtime.executors import (
     NodeExecutor,
     NodeExecutorRegistry,
 )
+from n8n_to_python.runtime.langgraph_engine import LangGraphExecutionEngine
 from n8n_to_python.runtime.models import NodeResult, WorkflowItem
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -216,6 +218,136 @@ async def test_runtime_runs_triggered_linear_graph_and_returns_terminal_items() 
     ]
     assert result.terminal_outputs[0].node_name == "Finish"
     assert result.terminal_outputs[0].items[0].json_data == {"count": 0, "value": "start"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine_type", [WorkflowExecutionEngine, LangGraphExecutionEngine])
+async def test_expression_can_read_a_linked_non_immediate_node_in_both_backends(
+    engine_type: type[WorkflowExecutionEngine] | type[LangGraphExecutionEngine],
+) -> None:
+    """Resolve linked items and chained first/last selectors on both runtimes."""
+    workflow = Workflow.model_validate(
+        {
+            "name": "named node expression",
+            "nodes": [
+                {
+                    "id": "trigger",
+                    "name": "Manual",
+                    "type": "n8n-nodes-base.manualTrigger",
+                    "typeVersion": 1,
+                    "position": [0, 0],
+                    "parameters": {},
+                },
+                {
+                    "id": "first-set",
+                    "name": "Copy current value",
+                    "type": "n8n-nodes-base.set",
+                    "typeVersion": 3.4,
+                    "position": [200, 0],
+                    "parameters": {
+                        "mode": "manual",
+                        "assignments": {
+                            "assignments": [
+                                {
+                                    "id": "current-copy",
+                                    "name": "intermediate",
+                                    "value": "={{ $json.seed }}",
+                                    "type": "string",
+                                }
+                            ]
+                        },
+                        "includeOtherFields": True,
+                        "options": {},
+                    },
+                },
+                {
+                    "id": "second-set",
+                    "name": "Read original trigger",
+                    "type": "n8n-nodes-base.set",
+                    "typeVersion": 3.4,
+                    "position": [400, 0],
+                    "parameters": {
+                        "mode": "manual",
+                        "assignments": {
+                            "assignments": [
+                                {
+                                    "id": "linked-copy",
+                                    "name": "fromOriginalTrigger",
+                                    "value": "={{ $('Manual').item.json.seed }}",
+                                    "type": "string",
+                                },
+                                {
+                                    "id": "first-node-item",
+                                    "name": "firstFromTrigger",
+                                    "value": "={{ $('Manual').all().first().json.seed }}",
+                                    "type": "string",
+                                },
+                                {
+                                    "id": "last-node-item",
+                                    "name": "lastFromTrigger",
+                                    "value": "={{ $('Manual').all().last().json.seed }}",
+                                    "type": "string",
+                                },
+                                {
+                                    "id": "first-input-item",
+                                    "name": "firstInput",
+                                    "value": "={{ $input.all().first().json.seed }}",
+                                    "type": "string",
+                                },
+                                {
+                                    "id": "last-input-item",
+                                    "name": "lastInput",
+                                    "value": "={{ $input.all().last().json.seed }}",
+                                    "type": "string",
+                                },
+                            ]
+                        },
+                        "includeOtherFields": True,
+                        "options": {},
+                    },
+                },
+            ],
+            "connections": {
+                "Manual": {"main": [[{"node": "Copy current value", "type": "main", "index": 0}]]},
+                "Copy current value": {
+                    "main": [[{"node": "Read original trigger", "type": "main", "index": 0}]]
+                },
+            },
+        }
+    )
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+    engine = engine_type(registry)
+
+    result = await engine.run(
+        workflow,
+        initial_items={
+            "Manual": (
+                WorkflowItem(json={"seed": "first"}),
+                WorkflowItem(json={"seed": "last"}),
+            )
+        },
+    )
+
+    assert [item.json_data for item in result.terminal_outputs[0].items] == [
+        {
+            "seed": "first",
+            "intermediate": "first",
+            "fromOriginalTrigger": "first",
+            "firstFromTrigger": "first",
+            "lastFromTrigger": "last",
+            "firstInput": "first",
+            "lastInput": "last",
+        },
+        {
+            "seed": "last",
+            "intermediate": "last",
+            "fromOriginalTrigger": "last",
+            "firstFromTrigger": "first",
+            "lastFromTrigger": "last",
+            "firstInput": "first",
+            "lastInput": "last",
+        },
+    ]
 
 
 @pytest.mark.asyncio

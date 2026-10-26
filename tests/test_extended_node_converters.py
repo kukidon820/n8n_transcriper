@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import zipfile
 from email import message_from_bytes
 from io import BytesIO
 from pathlib import Path
@@ -155,6 +156,48 @@ async def test_gzip_compression_round_trips_real_binary_data() -> None:
 
 
 @pytest.mark.asyncio
+async def test_zip_decompression_keeps_links_when_archives_expand_differently() -> None:
+    """Pair every extracted file with its source archive, even across mixed archive sizes."""
+    first_archive = BytesIO()
+    with zipfile.ZipFile(first_archive, "w") as archive:
+        archive.writestr("one.txt", "one")
+        archive.writestr("two.txt", "two")
+    second_archive = BytesIO()
+    with zipfile.ZipFile(second_archive, "w") as archive:
+        archive.writestr("three.txt", "three")
+
+    node = WorkflowNode(
+        id="unzip",
+        name="Unzip",
+        type="n8n-nodes-base.compression",
+        typeVersion=1.1,
+        position=(0, 0),
+        parameters={
+            "operation": "decompress",
+            "binaryPropertyName": "data",
+            "outputFormat": "zip",
+            "outputPrefix": "unpacked_",
+        },
+    )
+    executor = CompressionExecutor(CompressionParameters.model_validate(node.parameters))
+    result = await executor.execute(
+        node,
+        (
+            binary_item(first_archive.getvalue(), name="first.zip"),
+            binary_item(second_archive.getvalue(), name="second.zip"),
+        ),
+        NodeExecutionContext(input_port=None, invocation_number=1, state={}),
+    )
+
+    assert result.paired_input_indexes == ((0, 0, 1),)
+    assert [item.binary.keys() for item in result.outputs[0]] == [
+        {"data", "unpacked_one.txt"},
+        {"data", "unpacked_two.txt"},
+        {"data", "unpacked_three.txt"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
     """Run CSV and PDF extraction through the real Webhook→ZIP→Extract graph."""
     workflow = load_workflow("converters_files.json")
@@ -164,12 +207,23 @@ async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
     csv_result = await WorkflowExecutionEngine(registry).run(
         workflow,
         initial_items={
-            "Incoming": [binary_item(b"name,score\nAda,10\nLin,20\n", name="scores.csv")]
+            "Incoming": [
+                binary_item(b"name,score\nAda,10\nLin,20\n", name="ada.csv"),
+                binary_item(b"name,score\nGrace,30\nKatherine,40\n", name="grace.csv"),
+            ]
         },
     )
     assert [item.json_data for item in csv_result.terminal_outputs[0].items] == [
         {"parsed": {"name": "Ada", "score": "10"}},
         {"parsed": {"name": "Lin", "score": "20"}},
+        {"parsed": {"name": "Grace", "score": "30"}},
+        {"parsed": {"name": "Katherine", "score": "40"}},
+    ]
+    assert [item.lineage["Incoming"] for item in csv_result.terminal_outputs[0].items] == [
+        0,
+        0,
+        1,
+        1,
     ]
 
     pdf_bytes = BytesIO()
@@ -207,6 +261,33 @@ async def test_postgres_node_runs_a_parameterized_query_on_async_engine(
 
 
 @pytest.mark.asyncio
+async def test_postgres_rows_keep_links_to_the_input_that_created_them() -> None:
+    """Keep each query result linked when each input returns multiple rows."""
+    workflow = load_workflow("converters_postgres.json")
+    input_node = next(node for node in workflow.nodes if node.name == "Input")
+    input_node.parameters["assignments"]["assignments"][0]["value"] = "={{ $json.value }}"
+    query_node = next(node for node in workflow.nodes if node.name == "Query")
+    query_node.parameters["query"] = "SELECT $1 AS value UNION ALL SELECT $1 + 100 AS value"
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        result = await WorkflowExecutionEngine(
+            default_node_converter_registry().build_runtime_registry(workflow)
+        ).run(
+            workflow,
+            initial_items={
+                "Manual": [WorkflowItem(json={"value": 1}), WorkflowItem(json={"value": 2})]
+            },
+            services={"postgres_client": SQLAlchemyPostgresClient(engine)},
+        )
+    finally:
+        await engine.dispose()
+
+    output_items = result.terminal_outputs[0].items
+    assert [item.json_data["value"] for item in output_items] == [1, 101, 2, 102]
+    assert [item.lineage["Manual"] for item in output_items] == [0, 0, 1, 1]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("type_version", [1, 1.1])
 async def test_data_table_node_persists_rows_through_sqlalchemy_store(
     type_version: float,
@@ -228,6 +309,28 @@ async def test_data_table_node_persists_rows_through_sqlalchemy_store(
     assert result.terminal_outputs[0].items[0].json_data["key"] == "alpha"
     assert result.terminal_outputs[0].items[0].json_data["value"] == 42
     assert isinstance(result.terminal_outputs[0].items[0].json_data["id"], int)
+
+
+@pytest.mark.asyncio
+async def test_data_table_rows_keep_links_to_the_input_that_selected_them() -> None:
+    """Keep provenance for a read that expands every input into several table rows."""
+    workflow = load_workflow("converters_data_table.json")
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    store = SQLAlchemyDataTableStore(engine)
+    try:
+        result = await WorkflowExecutionEngine(
+            default_node_converter_registry().build_runtime_registry(workflow)
+        ).run(
+            workflow,
+            initial_items={"Manual": [WorkflowItem(json={}), WorkflowItem(json={})]},
+            services={"data_table_store": store},
+        )
+    finally:
+        await engine.dispose()
+
+    output_items = result.terminal_outputs[0].items
+    assert len(output_items) == 4
+    assert [item.lineage["Manual"] for item in output_items] == [0, 0, 1, 1]
 
 
 @pytest.mark.asyncio
@@ -363,7 +466,15 @@ async def test_email_node_sends_through_a_real_local_smtp_server(
     assert mail["To"] == "receiver@example.test"
     assert mail["Subject"] == "Hello Test User"
     assert "Message for Test User" in mail.get_payload(decode=True).decode()
-    assert result.terminal_outputs[0].items[0].json_data["name"] == "Test User"
+    receipt = result.terminal_outputs[0].items[0].json_data
+    assert receipt["accepted"] == ["receiver@example.test"]
+    assert receipt["rejected"] == []
+    assert receipt["envelope"] == {
+        "from": "sender@example.test",
+        "to": ["receiver@example.test"],
+    }
+    assert receipt["response"] == "queued"
+    assert receipt["messageId"].startswith("<")
 
 
 def test_webhook_requires_a_valid_initial_input_mapping() -> None:

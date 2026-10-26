@@ -2,10 +2,12 @@
 
 import os
 from email.message import EmailMessage as MimeEmailMessage
+from email.utils import make_msgid
 
 import aiosmtplib
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..application.models.email_delivery_result import EmailDeliveryResult, EmailEnvelope
 from ..application.models.outgoing_email import OutgoingEmail
 
 
@@ -53,12 +55,13 @@ class AioSMTPEmailSender:
         """Сохранить проверенные env-настройки без логирования учётных данных."""
         self._settings = settings
 
-    async def send(self, message: OutgoingEmail) -> None:
+    async def send(self, message: OutgoingEmail) -> EmailDeliveryResult:
         """Собрать MIME-сообщение и отправить его всем To/CC/BCC получателям."""
         mime_message = MimeEmailMessage()
         mime_message["From"] = message.from_email
         mime_message["To"] = ", ".join(message.to)
         mime_message["Subject"] = message.subject
+        mime_message["Message-ID"] = make_msgid()
         if message.cc:
             mime_message["Cc"] = ", ".join(message.cc)
         if message.reply_to:
@@ -68,15 +71,24 @@ class AioSMTPEmailSender:
         if message.html is not None:
             mime_message.add_alternative(message.html, subtype="html")
 
-        await aiosmtplib.send(
+        recipients = [*message.to, *message.cc, *message.bcc]
+        refused_recipients, response = await aiosmtplib.send(
             mime_message,
-            recipients=[*message.to, *message.cc, *message.bcc],
+            recipients=recipients,
             hostname=self._settings.host,
             port=self._settings.port,
             username=self._settings.username,
             password=self._settings.password,
             start_tls=self._settings.start_tls,
             use_tls=self._settings.use_tls,
+        )
+        rejected = tuple(refused_recipients)
+        return EmailDeliveryResult(
+            accepted=tuple(address for address in recipients if address not in rejected),
+            rejected=rejected,
+            response=response,
+            envelope=EmailEnvelope(from_email=message.from_email, to=tuple(recipients)),
+            message_id=str(mime_message["Message-ID"]),
         )
 
 

@@ -13,7 +13,7 @@ _TOKEN_PATTERN = re.compile(
     r"\s+|"
     r"(?P<string>'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")|"
     r"(?P<number>(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?)|"
-    r"(?P<variable>\$[A-Za-z_]\w*)|"
+    r"(?P<variable>\$[A-Za-z_]\w*|\$)|"
     r"(?P<identifier>[A-Za-z_]\w*)|"
     r"(?P<operator>===|!==|\?\?|&&|\|\||==|!=|>=|<=|[+*/%><!?:.,()\[\]{}-])"
 )
@@ -284,40 +284,59 @@ class _Function:
     receiver: Any = None
 
 
+@dataclass(frozen=True, slots=True)
+class _NodeReference:
+    """A safe reference to one named node's recorded output items."""
+
+    name: str
+
+
 class N8nExpressionEvaluator:
-    """Вычислить безопасный поднабор expressions для `$json` и `$binary`."""
+    """Вычислить безопасный поднабор expressions для item и node references."""
 
     _interpolation = re.compile(r"\{\{\s*(.*?)\s*\}\}", re.DOTALL)
 
-    def evaluate(self, value: Any, item: WorkflowItem, *, item_index: int = 0) -> Any:
+    def evaluate(
+        self,
+        value: Any,
+        item: WorkflowItem,
+        *,
+        item_index: int = 0,
+        context: Any = None,
+    ) -> Any:
         """Разобрать expression или текст с interpolation markers, сохранив литералы."""
         if isinstance(value, dict):
             return {
-                key: self.evaluate(child, item, item_index=item_index)
+                key: self.evaluate(child, item, item_index=item_index, context=context)
                 for key, child in value.items()
             }
         if isinstance(value, list):
-            return [self.evaluate(child, item, item_index=item_index) for child in value]
+            return [
+                self.evaluate(child, item, item_index=item_index, context=context)
+                for child in value
+            ]
         if not isinstance(value, str):
             return value
         if value.startswith("={{") and value.endswith("}}"):
-            return self._evaluate_source(value[3:-2].strip(), item, item_index)
+            return self._evaluate_source(value[3:-2].strip(), item, item_index, context)
         if value.startswith("{{") and value.endswith("}}"):
-            return self._evaluate_source(value[2:-2].strip(), item, item_index)
+            return self._evaluate_source(value[2:-2].strip(), item, item_index, context)
         if "{{" in value:
             return self._interpolation.sub(
                 lambda match: self._js_string(
-                    self._evaluate_source(match.group(1), item, item_index)
+                    self._evaluate_source(match.group(1), item, item_index, context)
                 ),
                 value,
             )
         return value
 
-    def _evaluate_source(self, source: str, item: WorkflowItem, item_index: int) -> Any:
+    def _evaluate_source(
+        self, source: str, item: WorkflowItem, item_index: int, context: Any
+    ) -> Any:
         """Разобрать выражение и превратить синтаксические ошибки в понятную диагностику."""
         try:
             expression = _ExpressionParser(source).parse()
-            return self._evaluate_node(expression, item, item_index)
+            return self._evaluate_node(expression, item, item_index, context)
         except UnsupportedNodeConfigurationError:
             raise
         except (ValueError, TypeError, SyntaxError, ZeroDivisionError, OverflowError) as error:
@@ -325,7 +344,9 @@ class N8nExpressionEvaluator:
                 f"Не удалось вычислить n8n expression {source!r}: {error}"
             ) from error
 
-    def _evaluate_node(self, node: _ExpressionNode, item: WorkflowItem, item_index: int) -> Any:
+    def _evaluate_node(
+        self, node: _ExpressionNode, item: WorkflowItem, item_index: int, context: Any
+    ) -> Any:
         """Вычислить AST-узел только через разрешённые типы и операции."""
         if isinstance(node, _Literal):
             return node.value
@@ -334,6 +355,8 @@ class N8nExpressionEvaluator:
                 "$json": item.json_data,
                 "$binary": item.binary or {},
                 "$itemIndex": item_index,
+                "$input": _Namespace("$input"),
+                "$": _Namespace("$"),
                 "JSON": _Namespace("JSON"),
                 "Object": _Namespace("Object"),
                 "String": _Function("String"),
@@ -347,11 +370,14 @@ class N8nExpressionEvaluator:
             return roots[node.value]
         if isinstance(node, _Member):
             return self._resolve_member(
-                self._evaluate_node(node.parent, item, item_index), node.name
+                self._evaluate_node(node.parent, item, item_index, context),
+                node.name,
+                item,
+                context,
             )
         if isinstance(node, _Index):
-            parent = self._evaluate_node(node.parent, item, item_index)
-            index = self._evaluate_node(node.index, item, item_index)
+            parent = self._evaluate_node(node.parent, item, item_index, context)
+            index = self._evaluate_node(node.index, item, item_index, context)
             if isinstance(parent, dict) and isinstance(index, str):
                 if index not in parent:
                     raise UnsupportedNodeConfigurationError(
@@ -367,11 +393,14 @@ class N8nExpressionEvaluator:
                     ) from error
             raise UnsupportedNodeConfigurationError("Этот тип expression index не поддерживается.")
         if isinstance(node, _Array):
-            return [self._evaluate_node(child, item, item_index) for child in node.values]
+            return [self._evaluate_node(child, item, item_index, context) for child in node.values]
         if isinstance(node, _Object):
-            return {key: self._evaluate_node(value, item, item_index) for key, value in node.fields}
+            return {
+                key: self._evaluate_node(value, item, item_index, context)
+                for key, value in node.fields
+            }
         if isinstance(node, _Unary):
-            operand = self._evaluate_node(node.operand, item, item_index)
+            operand = self._evaluate_node(node.operand, item, item_index, context)
             if node.operator == "!":
                 return not self._js_truthy(operand)
             if isinstance(operand, bool) or not isinstance(operand, (int, float)):
@@ -380,31 +409,43 @@ class N8nExpressionEvaluator:
                 )
             return operand if node.operator == "+" else -operand
         if isinstance(node, _Binary):
-            return self._evaluate_binary(node, item, item_index)
+            return self._evaluate_binary(node, item, item_index, context)
         if isinstance(node, _Conditional):
-            condition = self._evaluate_node(node.condition, item, item_index)
+            condition = self._evaluate_node(node.condition, item, item_index, context)
             branch = node.when_true if self._js_truthy(condition) else node.when_false
-            return self._evaluate_node(branch, item, item_index)
+            return self._evaluate_node(branch, item, item_index, context)
         if isinstance(node, _Call):
-            function = self._evaluate_node(node.function, item, item_index)
-            arguments = [self._evaluate_node(arg, item, item_index) for arg in node.arguments]
-            return self._call(function, arguments)
+            function = self._evaluate_node(node.function, item, item_index, context)
+            arguments = [
+                self._evaluate_node(arg, item, item_index, context) for arg in node.arguments
+            ]
+            return self._call(function, arguments, item, context)
         raise UnsupportedNodeConfigurationError("Обнаружена неизвестная форма expression.")
 
-    def _evaluate_binary(self, node: _Binary, item: WorkflowItem, item_index: int) -> Any:
+    def _evaluate_binary(
+        self, node: _Binary, item: WorkflowItem, item_index: int, context: Any
+    ) -> Any:
         """Вычислить оператор с JavaScript-подобным short circuit и coalescing."""
-        left = self._evaluate_node(node.left, item, item_index)
+        left = self._evaluate_node(node.left, item, item_index, context)
         if node.operator == "&&":
             return (
-                self._evaluate_node(node.right, item, item_index) if self._js_truthy(left) else left
+                self._evaluate_node(node.right, item, item_index, context)
+                if self._js_truthy(left)
+                else left
             )
         if node.operator == "||":
             return (
-                left if self._js_truthy(left) else self._evaluate_node(node.right, item, item_index)
+                left
+                if self._js_truthy(left)
+                else self._evaluate_node(node.right, item, item_index, context)
             )
         if node.operator == "??":
-            return left if left is not None else self._evaluate_node(node.right, item, item_index)
-        right = self._evaluate_node(node.right, item, item_index)
+            return (
+                left
+                if left is not None
+                else self._evaluate_node(node.right, item, item_index, context)
+            )
+        right = self._evaluate_node(node.right, item, item_index, context)
         if node.operator == "+":
             if isinstance(left, str) or isinstance(right, str):
                 return self._js_string(left) + self._js_string(right)
@@ -434,8 +475,7 @@ class N8nExpressionEvaluator:
             }[node.operator]
         raise UnsupportedNodeConfigurationError(f"Оператор {node.operator!r} не поддерживается.")
 
-    @staticmethod
-    def _resolve_member(parent: Any, name: str) -> Any:
+    def _resolve_member(self, parent: Any, name: str, item: WorkflowItem, context: Any) -> Any:
         """Разрешить JSON key, строковую длину или whitelist-функцию namespace."""
         if isinstance(parent, dict):
             if name not in parent:
@@ -443,6 +483,29 @@ class N8nExpressionEvaluator:
                     f"Поле {name!r} отсутствует в expression input."
                 )
             return parent[name]
+        if isinstance(parent, WorkflowItem):
+            if name == "json":
+                return parent.json_data
+            if name == "binary":
+                return parent.binary or {}
+            raise UnsupportedNodeConfigurationError(
+                f"Свойство WorkflowItem {name!r} не поддерживается."
+            )
+        if isinstance(parent, _NodeReference):
+            if name == "item":
+                history = self._node_history(context, parent.name)
+                try:
+                    index = item.lineage[parent.name]
+                    return history[index]
+                except (KeyError, IndexError) as error:
+                    raise UnsupportedNodeConfigurationError(
+                        f"Для expression $('{parent.name}').item нет однозначной связи с текущим item."
+                    ) from error
+            if name in {"first", "last", "all"}:
+                return _Function(f"Node.{name}", parent.name)
+            raise UnsupportedNodeConfigurationError(
+                f"Свойство узла {parent.name!r}.{name} не поддерживается."
+            )
         if isinstance(parent, _Namespace):
             allowed = {
                 "JSON": {
@@ -451,6 +514,13 @@ class N8nExpressionEvaluator:
                 },
                 "Object": {"keys": _Function("Object.keys")},
             }
+            if parent.name == "$":
+                return _Function("Node.reference")
+            if parent.name == "$input":
+                if name == "item":
+                    return item
+                if name in {"first", "last", "all"}:
+                    return _Function(f"Input.{name}")
             try:
                 return allowed[parent.name][name]
             except KeyError as error:
@@ -461,6 +531,8 @@ class N8nExpressionEvaluator:
             return _Function("Array.join", parent)
         if isinstance(parent, list) and name == "includes":
             return _Function("Array.includes", parent)
+        if isinstance(parent, list) and name in {"first", "last"}:
+            return _Function(f"Array.{name}", parent)
         if isinstance(parent, str) and name in {
             "toUpperCase",
             "toLowerCase",
@@ -476,10 +548,32 @@ class N8nExpressionEvaluator:
             f"Доступ к свойству {name!r} этого expression value не поддерживается."
         )
 
-    def _call(self, function: Any, arguments: list[Any]) -> Any:
+    def _call(
+        self,
+        function: Any,
+        arguments: list[Any],
+        item: WorkflowItem,
+        context: Any,
+    ) -> Any:
         """Выполнить одну из встроенных функций, разрешённых evaluator-ом."""
+        if isinstance(function, _Namespace) and function.name == "$" and len(arguments) == 1:
+            if not isinstance(arguments[0], str) or not arguments[0]:
+                raise UnsupportedNodeConfigurationError("$('node') требует имя узла строкой.")
+            self._node_history(context, arguments[0])
+            return _NodeReference(arguments[0])
         if not isinstance(function, _Function):
             raise UnsupportedNodeConfigurationError("Вызов произвольной функции запрещён.")
+        if function.name == "Node.reference" and len(arguments) == 1:
+            if not isinstance(arguments[0], str) or not arguments[0]:
+                raise UnsupportedNodeConfigurationError("$('node') требует имя узла строкой.")
+            self._node_history(context, arguments[0])
+            return _NodeReference(arguments[0])
+        if function.name.startswith("Input."):
+            input_items = tuple(getattr(context, "input_items", ()) or (item,))
+            return self._select_item(function.name.removeprefix("Input."), input_items, arguments)
+        if function.name.startswith("Node."):
+            history = self._node_history(context, str(function.receiver))
+            return self._select_item(function.name.removeprefix("Node."), history, arguments)
         if function.name == "String" and len(arguments) == 1:
             return self._js_string(arguments[0])
         if function.name == "Number" and len(arguments) == 1:
@@ -501,6 +595,12 @@ class N8nExpressionEvaluator:
             return separator.join(self._js_string(value) for value in function.receiver)
         if function.name == "Array.includes" and len(arguments) == 1:
             return arguments[0] in function.receiver
+        if function.name in {"Array.first", "Array.last"} and not arguments:
+            if not function.receiver:
+                raise UnsupportedNodeConfigurationError(
+                    "Нельзя выбрать first/last из пустого массива items."
+                )
+            return function.receiver[0] if function.name == "Array.first" else function.receiver[-1]
         if function.name == "String.toUpperCase" and not arguments:
             return function.receiver.upper()
         if function.name == "String.toLowerCase" and not arguments:
@@ -521,6 +621,36 @@ class N8nExpressionEvaluator:
         raise UnsupportedNodeConfigurationError(
             f"Вызов {function.name} с такой сигнатурой не поддерживается."
         )
+
+    @staticmethod
+    def _select_item(selector: str, items: tuple[WorkflowItem, ...], arguments: list[Any]) -> Any:
+        """Resolve the common first/last/all selectors for node and input items."""
+        if arguments:
+            raise UnsupportedNodeConfigurationError(
+                "Индексы ветки и запуска в first/last/all пока не поддерживаются."
+            )
+        if selector == "all":
+            return [
+                {
+                    "json": value.json_data,
+                    **({"binary": value.binary} if value.binary is not None else {}),
+                }
+                for value in items
+            ]
+        if not items:
+            raise UnsupportedNodeConfigurationError("Expression запрашивает пустой список items.")
+        return items[0] if selector == "first" else items[-1]
+
+    @staticmethod
+    def _node_history(context: Any, node_name: str) -> tuple[WorkflowItem, ...]:
+        """Get an earlier node's recorded outputs or explain the missing reference."""
+        history = getattr(context, "node_outputs", {}) if context is not None else {}
+        try:
+            return tuple(history[node_name])
+        except KeyError as error:
+            raise UnsupportedNodeConfigurationError(
+                f"Expression ссылается на узел {node_name!r}, который ещё не выполнялся."
+            ) from error
 
     @staticmethod
     def _js_truthy(value: Any) -> bool:

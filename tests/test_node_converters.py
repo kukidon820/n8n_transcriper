@@ -244,9 +244,19 @@ async def test_http_request_uses_aiohttp_and_respects_the_query_parameters(
         """Вернуть JSON body принятого запроса для проверки expression в теле."""
         return web.json_response({"payload": await request.json()})
 
+    async def echo_array(_: web.Request) -> web.Response:
+        """Вернуть массив объектов, который n8n превращает в отдельные items."""
+        return web.json_response([{"id": 1}, {"id": 2}])
+
+    async def mixed_array(_: web.Request) -> web.Response:
+        """Вернуть объект и строку, которые должны стать отдельными JSON items."""
+        return web.json_response([{"id": 1}, "not-an-object"])
+
     app = web.Application()
     app.router.add_get("/echo", echo)
     app.router.add_get("/fail", fail)
+    app.router.add_get("/array", echo_array)
+    app.router.add_get("/mixed-array", mixed_array)
     app.router.add_post("/body", echo_body)
     runner = web.AppRunner(app)
     await runner.setup()
@@ -276,10 +286,26 @@ async def test_http_request_uses_aiohttp_and_respects_the_query_parameters(
         body_result = await WorkflowExecutionEngine(body_registry).run(workflow)
         assert body_result.terminal_outputs[0].items[0].json_data == {"payload": {"query": "hello"}}
 
-        request_node.parameters["url"] = f"http://127.0.0.1:{port}/fail"
+        request_node.parameters["url"] = f"http://127.0.0.1:{port}/array"
         request_node.parameters["method"] = "GET"
         request_node.parameters["sendBody"] = False
         request_node.parameters.pop("jsonBody")
+        array_registry = default_node_converter_registry().build_runtime_registry(workflow)
+        array_result = await WorkflowExecutionEngine(array_registry).run(workflow)
+        assert [item.json_data for item in array_result.terminal_outputs[0].items] == [
+            {"id": 1},
+            {"id": 2},
+        ]
+
+        request_node.parameters["url"] = f"http://127.0.0.1:{port}/mixed-array"
+        mixed_array_registry = default_node_converter_registry().build_runtime_registry(workflow)
+        mixed_array_result = await WorkflowExecutionEngine(mixed_array_registry).run(workflow)
+        assert [item.json_data for item in mixed_array_result.terminal_outputs[0].items] == [
+            {"id": 1},
+            "not-an-object",
+        ]
+
+        request_node.parameters["url"] = f"http://127.0.0.1:{port}/fail"
         failing_registry = default_node_converter_registry().build_runtime_registry(workflow)
         with pytest.raises(NodeExecutionError) as raised:
             await WorkflowExecutionEngine(failing_registry).run(workflow)

@@ -13,41 +13,53 @@ from aiohttp import web
 
 from n8n_to_python.application.services.progress import ProgressReporter
 from n8n_to_python.converters.langgraph import LangGraphGenerator
+from n8n_to_python.converters.python_core import PythonCoreGenerator
 from n8n_to_python.domain.models.workflow import Workflow
 from n8n_to_python.runtime.executors import NodeExecutionContext
 from n8n_to_python.runtime.langgraph_agent import LangGraphAIAgentExecutor
 from n8n_to_python.runtime.models import WorkflowItem
 
 FIXTURES = Path(__file__).parent / "fixtures"
+PUBLIC_WORKFLOW = Path(__file__).parents[1] / "n8n_public_api_python_csv_zip_email.json"
+AI_AGENT_NAME = "03 AI Agent - publication review"
+AI_MODEL_NAME = "AI DeepSeek Chat Model"
+AI_TOOL_NAME = "AI Calculator Tool"
+AI_MEMORY_NAME = "AI Simple Memory"
 
 
-def minimal_ai_workflow() -> Workflow:
-    """Keep the real AI nodes/ports and add an Edit Fields node that supplies session id."""
-    workflow = Workflow.model_validate_json((FIXTURES / "workflow_test.json").read_bytes())
-    base_workflow = Workflow.model_validate_json((FIXTURES / "converters_basic.json").read_bytes())
-    session_node = next(node for node in base_workflow.nodes if node.name == "Input fields")
-    session_node = session_node.model_copy(deep=True, update={"name": "02 Session ID"})
-    session_node.parameters["assignments"]["assignments"].append(
-        {"id": "session-id", "name": "id", "value": "workflow-test", "type": "string"}
+def minimal_ai_workflow(public_api_url: str) -> Workflow:
+    """Extract the real HTTP → Python filter → AI path and its connected AI nodes."""
+    workflow = Workflow.model_validate_json(PUBLIC_WORKFLOW.read_bytes())
+    trigger_name = next(
+        node.name for node in workflow.nodes if node.type.endswith(".manualTrigger")
+    )
+    posts_request = next(node for node in workflow.nodes if node.name.startswith("02 "))
+    posts_filter = next(
+        node
+        for node in workflow.nodes
+        if node.type == "n8n-nodes-base.code" and node.parameters.get("language") == "pythonNative"
     )
     selected_names = {
-        "01 Manual Trigger",
-        "11 AI Agent (optional)",
-        "12 DeepSeek Chat Model",
-        "13 Calculator Tool",
-        "14 Simple Memory",
+        trigger_name,
+        posts_request.name,
+        posts_filter.name,
+        AI_AGENT_NAME,
+        AI_MODEL_NAME,
+        AI_TOOL_NAME,
+        AI_MEMORY_NAME,
     }
     data = workflow.model_dump(mode="json", by_alias=True)
     data["nodes"] = [node for node in data["nodes"] if node["name"] in selected_names]
-    data["nodes"].append(session_node.model_dump(mode="json", by_alias=True))
+    next(node for node in data["nodes"] if node["name"] == posts_request.name)["parameters"][
+        "url"
+    ] = f"{public_api_url}/posts"
     data["connections"] = {
-        "01 Manual Trigger": {"main": [[{"node": "02 Session ID", "type": "main", "index": 0}]]},
-        "02 Session ID": {
-            "main": [[{"node": "11 AI Agent (optional)", "type": "main", "index": 0}]]
-        },
+        trigger_name: {"main": [[{"node": posts_request.name, "type": "main", "index": 0}]]},
+        posts_request.name: {"main": [[{"node": posts_filter.name, "type": "main", "index": 0}]]},
+        posts_filter.name: {"main": [[{"node": AI_AGENT_NAME, "type": "main", "index": 0}]]},
         **{
-            name: workflow.connections[name]
-            for name in ("12 DeepSeek Chat Model", "13 Calculator Tool", "14 Simple Memory")
+            name: data["connections"][name]
+            for name in (AI_MODEL_NAME, AI_TOOL_NAME, AI_MEMORY_NAME)
         },
     }
     return Workflow.model_validate(data)
@@ -105,13 +117,50 @@ async def local_deepseek_endpoint() -> AsyncIterator[tuple[str, list[dict[str, o
         await runner.cleanup()
 
 
+@pytest_asyncio.fixture
+async def local_public_api_endpoint() -> AsyncIterator[str]:
+    """Serve representative posts to the real HTTP Request node without internet."""
+
+    async def posts(_: web.Request) -> web.Response:
+        return web.json_response(
+            [
+                {
+                    "id": 2,
+                    "userId": 1,
+                    "title": "An even public publication",
+                    "body": "A filtered publication body.",
+                },
+                {
+                    "id": 3,
+                    "userId": 1,
+                    "title": "An odd public publication",
+                    "body": "This post should be filtered out.",
+                },
+                {"id": 4, "userId": 1, "title": "Short", "body": "Short title."},
+            ]
+        )
+
+    application = web.Application()
+    application.router.add_get("/posts", posts)
+    runner = web.AppRunner(application)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    assert site._server is not None
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        await runner.cleanup()
+
+
 @pytest.mark.asyncio
 async def test_ai_agent_executes_model_calculator_and_simple_memory_connections(
     local_deepseek_endpoint: tuple[str, list[dict[str, object]]],
 ) -> None:
-    """Use the real fixture's three AI ports and run model calls through aiohttp."""
-    workflow = Workflow.model_validate_json((FIXTURES / "workflow_test.json").read_bytes())
-    agent_node = next(node for node in workflow.nodes if node.type.endswith(".agent"))
+    """Run the public workflow's three AI ports through the local aiohttp endpoint."""
+    workflow = Workflow.model_validate_json(PUBLIC_WORKFLOW.read_bytes())
+    agent_node = next(node for node in workflow.nodes if node.name == AI_AGENT_NAME)
     executor = LangGraphAIAgentExecutor.from_workflow(workflow, agent_node)
     base_url, received_requests = local_deepseek_endpoint
     state: dict[str, object] = {}
@@ -120,7 +169,9 @@ async def test_ai_agent_executes_model_calculator_and_simple_memory_connections(
         "deepseek_base_url": base_url,
         "deepseek_model": "deepseek-flash",
     }
-    item = WorkflowItem(json={"id": "workflow-test", "question": "Сколько будет 2 + 3 * 4?"})
+    item = WorkflowItem(
+        json={"id": "workflow-test", "posts_count": 1, "question": "Сколько будет 2 + 3 * 4?"}
+    )
 
     first_result = await executor.execute(
         agent_node,
@@ -167,19 +218,15 @@ async def test_ai_agent_executes_model_calculator_and_simple_memory_connections(
 async def test_generated_langgraph_ai_workflow_runs_the_real_fixture_end_to_end(
     tmp_path: Path,
     local_deepseek_endpoint: tuple[str, list[dict[str, object]]],
+    local_public_api_endpoint: str,
 ) -> None:
-    """Generate and run trigger → AI Agent with its model/tool/memory AI connections."""
-    workflow = minimal_ai_workflow()
+    """Run the public HTTP → Python → AI path using only local integration endpoints."""
+    workflow = minimal_ai_workflow(local_public_api_endpoint)
     project = await LangGraphGenerator().generate(workflow, progress=ProgressReporter())
     assert (
         "REQUIRED_MANUAL_CHANGES = ()" in project.files["src/generated_workflow/manual_changes.py"]
     )
-    for name in (
-        "11 AI Agent (optional)",
-        "12 DeepSeek Chat Model",
-        "13 Calculator Tool",
-        "14 Simple Memory",
-    ):
+    for name in (AI_AGENT_NAME, AI_MODEL_NAME, AI_TOOL_NAME, AI_MEMORY_NAME):
         assert name not in project.files["MANUAL_CHANGES.md"]
 
     write_project(project.files, tmp_path)
@@ -207,6 +254,33 @@ async def test_generated_langgraph_ai_workflow_runs_the_real_fixture_end_to_end(
 
     assert process.returncode == 0, stderr.decode()
     terminal_outputs = json.loads(stdout.decode())
-    assert terminal_outputs[0]["node"] == "11 AI Agent (optional)"
-    assert terminal_outputs[0]["items"][0]["json"]["output"] == "Calculated 14."
+    assert terminal_outputs[0]["node"] == AI_AGENT_NAME
+    agent_output = terminal_outputs[0]["items"][0]["json"]
+    assert agent_output["output"] == "Calculated 14."
+    assert agent_output["posts_count"] == 1
+    assert agent_output["posts"][0]["post_id"] == 2
+    assert "An even public publication" in received_requests[0]["messages"][-1]["content"]
     assert len(received_requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_public_workflow_ai_support_is_backend_specific() -> None:
+    """Keep the AI subgraph supported in LangGraph while Python Core reports its limitation."""
+    workflow = Workflow.model_validate_json(PUBLIC_WORKFLOW.read_bytes())
+
+    langgraph_project = await LangGraphGenerator().generate(
+        workflow,
+        progress=ProgressReporter(),
+    )
+    langgraph_manual_changes = langgraph_project.files["MANUAL_CHANGES.md"]
+    for name in (AI_AGENT_NAME, AI_MODEL_NAME, AI_TOOL_NAME, AI_MEMORY_NAME):
+        assert name not in langgraph_manual_changes
+    assert "07 · Code — собрать CSV" in langgraph_manual_changes
+    assert "09 · Email — отправить ZIP" in langgraph_manual_changes
+
+    python_core_project = await PythonCoreGenerator().generate(
+        workflow,
+        progress=ProgressReporter(),
+    )
+    python_core_manual_changes = python_core_project.files["MANUAL_CHANGES.md"]
+    assert AI_AGENT_NAME in python_core_manual_changes

@@ -10,8 +10,9 @@ class WorkflowItem(BaseModel):
 
     model_config = ConfigDict(extra="allow", frozen=True, populate_by_name=True)
 
-    json_data: dict[str, Any] = Field(alias="json")
+    json_data: Any = Field(alias="json")
     binary: dict[str, Any] | None = None
+    lineage: dict[str, int] = Field(default_factory=dict, exclude=True, repr=False)
 
 
 class RuntimeInputPort(BaseModel):
@@ -28,6 +29,7 @@ class NodeResult(BaseModel):
     """Пакеты items по выходам узла; позиция в tuple — индекс выхода `main`."""
 
     outputs: tuple[OutputItems, ...] = ()
+    paired_input_indexes: tuple[tuple[int | None, ...] | None, ...] = ()
 
 
 class NodeExecutionRecord(BaseModel):

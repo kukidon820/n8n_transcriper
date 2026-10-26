@@ -87,6 +87,7 @@ class WorkflowExecutionEngine:
         terminal_outputs: list[TerminalOutput] = []
         total_invocations = 0
         run_state: dict[str, Any] = {}
+        node_outputs: dict[str, list[WorkflowItem]] = {}
 
         while queue:
             if total_invocations >= self._settings.max_node_executions:
@@ -105,6 +106,8 @@ class WorkflowExecutionEngine:
                 invocation_number=invocation_counts[node.name],
                 state=run_state,
                 services=runtime_services,
+                input_items=input_snapshot,
+                node_outputs={name: tuple(values) for name, values in node_outputs.items()},
             )
 
             try:
@@ -129,6 +132,8 @@ class WorkflowExecutionEngine:
                     f"но вернул только {len(result.outputs)}."
                 )
 
+            paired_indexes = self._paired_input_indexes(result, invocation.items, node.name)
+
             executions.append(
                 NodeExecutionRecord(
                     node_name=node.name,
@@ -144,15 +149,28 @@ class WorkflowExecutionEngine:
                 if batch is None:
                     continue
 
+                output_history = node_outputs.setdefault(node.name, [])
+                history_offset = len(output_history)
+                linked_batch: list[WorkflowItem] = []
+                for item_index, item in enumerate(batch):
+                    parent_index = paired_indexes[output_index][item_index]
+                    lineage = dict(item.lineage)
+                    if parent_index is not None:
+                        lineage = {**invocation.items[parent_index].lineage, **lineage}
+                    lineage[node.name] = history_offset + item_index
+                    linked_batch.append(item.model_copy(update={"lineage": lineage}))
+                linked_items = tuple(linked_batch)
+                output_history.extend(linked_items)
+
                 targets = plan.outgoing.get((node.name, output_index), ())
                 if not targets:
-                    if not batch:
+                    if not linked_items:
                         continue
                     terminal_outputs.append(
                         TerminalOutput(
                             node_name=node.name,
                             output_index=output_index,
-                            items=self._copy_items(batch),
+                            items=self._copy_items(linked_items),
                         )
                     )
                     continue
@@ -161,7 +179,7 @@ class WorkflowExecutionEngine:
                     queue.append(
                         _Invocation(
                             node_name=target.target_node,
-                            items=self._copy_items(batch),
+                            items=self._copy_items(linked_items),
                             input_port=target.target_input,
                         )
                     )
@@ -184,6 +202,74 @@ class WorkflowExecutionEngine:
             executions=tuple(executions),
             terminal_outputs=tuple(terminal_outputs),
         )
+
+    @classmethod
+    def _paired_input_indexes(
+        cls,
+        result: NodeResult,
+        input_items: Sequence[WorkflowItem],
+        node_name: str,
+    ) -> tuple[tuple[int | None, ...], ...]:
+        """Resolve the n8n paired-item lineage for each item emitted by a node."""
+        if result.paired_input_indexes and len(result.paired_input_indexes) != len(result.outputs):
+            raise InvalidNodeOutputError(
+                f"Узел {node_name!r} вернул paired_input_indexes не для всех выходов."
+            )
+
+        resolved: list[tuple[int | None, ...]] = []
+        for port_index, batch in enumerate(result.outputs):
+            if batch is None:
+                resolved.append(())
+                continue
+
+            explicit = (
+                result.paired_input_indexes[port_index] if result.paired_input_indexes else None
+            )
+            if explicit is not None:
+                if len(explicit) != len(batch):
+                    raise InvalidNodeOutputError(
+                        f"Узел {node_name!r} вернул неверное число связей с входными items."
+                    )
+                if any(
+                    index is not None and not 0 <= index < len(input_items) for index in explicit
+                ):
+                    raise InvalidNodeOutputError(
+                        f"Узел {node_name!r} сослался на отсутствующий входной item."
+                    )
+                resolved.append(explicit)
+                continue
+
+            resolved.append(cls._infer_input_indexes(batch, input_items))
+        return tuple(resolved)
+
+    @staticmethod
+    def _infer_input_indexes(
+        output_items: Sequence[WorkflowItem], input_items: Sequence[WorkflowItem]
+    ) -> tuple[int | None, ...]:
+        """Infer one-to-one/passthrough links and leave ambiguous links unpaired."""
+        if not output_items or not input_items:
+            return tuple(None for _ in output_items)
+        if len(output_items) == len(input_items):
+            return tuple(range(len(output_items)))
+        if len(input_items) == 1:
+            return tuple(0 for _ in output_items)
+
+        unmatched = set(range(len(input_items)))
+        indexes: list[int | None] = []
+        for output_item in output_items:
+            match = next(
+                (
+                    index
+                    for index in unmatched
+                    if output_item.model_dump(exclude={"lineage"})
+                    == input_items[index].model_dump(exclude={"lineage"})
+                ),
+                None,
+            )
+            indexes.append(match)
+            if match is not None:
+                unmatched.remove(match)
+        return tuple(indexes)
 
     @staticmethod
     def _copy_items(items: Sequence[WorkflowItem]) -> tuple[WorkflowItem, ...]:
