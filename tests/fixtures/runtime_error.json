@@ -1,0 +1,10 @@
+{
+  "name": "Runtime error graph",
+  "nodes": [
+    {"name": "Trigger", "type": "fixture.trigger", "typeVersion": 1, "position": [0, 0]},
+    {"name": "Fail", "type": "fixture.fail", "typeVersion": 1, "position": [200, 0]}
+  ],
+  "connections": {
+    "Trigger": {"main": [[{"node": "Fail", "type": "main", "index": 0}]]}
+  }
+}
