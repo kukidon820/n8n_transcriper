@@ -92,9 +92,11 @@ async def test_python_native_code_runs_once_for_each_item() -> None:
 
 
 @pytest.mark.asyncio
-async def test_webhook_payload_starts_only_the_selected_trigger() -> None:
+@pytest.mark.parametrize("type_version", [1, 1.1, 2, 2.1, 2.2])
+async def test_webhook_payload_starts_only_the_selected_trigger(type_version: float) -> None:
     """Pass a real payload to a callable Webhook trigger without starting a server."""
     workflow = load_workflow("converters_files.json")
+    workflow.nodes[0].type_version = type_version
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     payload = json.dumps({"hello": "webhook"}).encode()
 
@@ -184,9 +186,15 @@ async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgres_node_runs_a_parameterized_query_on_async_engine() -> None:
+@pytest.mark.parametrize("type_version", [2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8])
+async def test_postgres_node_runs_a_parameterized_query_on_async_engine(
+    type_version: float,
+) -> None:
     """Use a real SQLAlchemy async SQLite engine to verify safe positional binding."""
     workflow = load_workflow("converters_postgres.json")
+    next(
+        node for node in workflow.nodes if node.type == "n8n-nodes-base.postgres"
+    ).type_version = type_version
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:
         result = await WorkflowExecutionEngine(
@@ -199,9 +207,15 @@ async def test_postgres_node_runs_a_parameterized_query_on_async_engine() -> Non
 
 
 @pytest.mark.asyncio
-async def test_data_table_node_persists_rows_through_sqlalchemy_store() -> None:
+@pytest.mark.parametrize("type_version", [1, 1.1])
+async def test_data_table_node_persists_rows_through_sqlalchemy_store(
+    type_version: float,
+) -> None:
     """Insert and read a row through a real SQLAlchemy-backed store."""
     workflow = load_workflow("converters_data_table.json")
+    for node in workflow.nodes:
+        if node.type == "n8n-nodes-base.dataTable":
+            node.type_version = type_version
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     store = SQLAlchemyDataTableStore(engine)
     try:
@@ -289,7 +303,10 @@ def test_data_table_rejects_updates_without_a_filter() -> None:
 
 
 @pytest.mark.asyncio
-async def test_email_node_sends_through_a_real_local_smtp_server(monkeypatch) -> None:
+@pytest.mark.parametrize("type_version", [2, 2.1])
+async def test_email_node_sends_through_a_real_local_smtp_server(
+    monkeypatch, type_version: float
+) -> None:
     """Deliver a message over a local SMTP protocol listener, without a mail mock."""
     captured = bytearray()
 
@@ -327,6 +344,9 @@ async def test_email_node_sends_through_a_real_local_smtp_server(monkeypatch) ->
     monkeypatch.delenv("SMTP_USERNAME", raising=False)
     monkeypatch.delenv("SMTP_PASSWORD", raising=False)
     workflow = load_workflow("converters_email.json")
+    next(
+        node for node in workflow.nodes if node.type == "n8n-nodes-base.emailSend"
+    ).type_version = type_version
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     email_sender = create_email_sender_from_env()
 
@@ -353,6 +373,36 @@ def test_webhook_requires_a_valid_initial_input_mapping() -> None:
 
     with pytest.raises(ValueError, match="укажите имя trigger-узла"):
         asyncio.run(WorkflowExecutionEngine(registry).run(workflow, initial_items={}))
+
+
+@pytest.mark.asyncio
+async def test_schedule_trigger_v1_3_emits_n8n_time_fields_for_a_runtime_tick() -> None:
+    """Create the n8n Schedule Trigger payload for one selected schedule event."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    workflow = load_workflow("converters_schedule.json")
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+    scheduled_at = datetime(2026, 10, 26, 15, 4, 5, tzinfo=ZoneInfo("Europe/Minsk"))
+
+    result = await WorkflowExecutionEngine(registry).run(
+        workflow,
+        services={"timezone": "Europe/Minsk", "schedule_time": scheduled_at},
+    )
+
+    assert result.terminal_outputs[0].items[0].json_data == {
+        "timestamp": "2026-10-26T15:04:05.000+03:00",
+        "Readable date": "October 26th 2026, 3:04:05 pm",
+        "Readable time": "3:04:05 pm",
+        "Day of week": "Monday",
+        "Year": "2026",
+        "Month": "October",
+        "Day of month": "26",
+        "Hour": "15",
+        "Minute": "04",
+        "Second": "05",
+        "Timezone": "Europe/Minsk (UTC+03:00)",
+    }
 
 
 def test_compression_rejects_binary_without_base64_data() -> None:
