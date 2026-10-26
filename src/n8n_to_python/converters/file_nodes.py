@@ -97,7 +97,8 @@ class CompressionExecutor:
         context: NodeExecutionContext,
     ) -> NodeResult:
         output: list[WorkflowItem] = []
-        for item in items:
+        paired_input_indexes: list[int] = []
+        for item_index, item in enumerate(items):
             content, _ = _binary_bytes(item, self._parameters.binary_property_name)
             if self._parameters.operation == "compress":
                 archive = self._compress(content)
@@ -114,6 +115,7 @@ class CompressionExecutor:
                         _binary_metadata(archive, name, mimetype),
                     )
                 )
+                paired_input_indexes.append(item_index)
             else:
                 for extracted_name, extracted, mime_type in self._decompress(content):
                     output_property = (
@@ -128,7 +130,11 @@ class CompressionExecutor:
                             _binary_metadata(extracted, extracted_name, mime_type),
                         )
                     )
-        return NodeResult(outputs=(tuple(output),))
+                    paired_input_indexes.append(item_index)
+        return NodeResult(
+            outputs=(tuple(output),),
+            paired_input_indexes=(tuple(paired_input_indexes),),
+        )
 
     def _compressed_name(self) -> str:
         name = self._parameters.file_name
@@ -204,7 +210,8 @@ class ExtractFromFileExecutor:
         context: NodeExecutionContext,
     ) -> NodeResult:
         output: list[WorkflowItem] = []
-        for item in items:
+        paired_input_indexes: list[int] = []
+        for item_index, item in enumerate(items):
             content, _ = _binary_bytes(item, self._parameters.binary_property_name)
             if self._parameters.operation == "csv":
                 records = self._extract_csv(content)
@@ -219,7 +226,11 @@ class ExtractFromFileExecutor:
                         binary=item.binary if self._parameters.options.keep_source else None,
                     )
                 )
-        return NodeResult(outputs=(tuple(output),))
+                paired_input_indexes.append(item_index)
+        return NodeResult(
+            outputs=(tuple(output),),
+            paired_input_indexes=(tuple(paired_input_indexes),),
+        )
 
     def _extract_csv(self, content: bytes) -> list[dict[str, object]]:
         try:

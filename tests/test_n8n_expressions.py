@@ -4,6 +4,7 @@ import pytest
 
 from n8n_to_python.converters.errors import UnsupportedNodeConfigurationError
 from n8n_to_python.converters.expressions import N8nExpressionEvaluator
+from n8n_to_python.runtime.executors import NodeExecutionContext
 from n8n_to_python.runtime.models import WorkflowItem
 
 
@@ -73,3 +74,96 @@ def test_expression_rejects_arbitrary_python_or_javascript_execution() -> None:
 
     with pytest.raises(UnsupportedNodeConfigurationError, match="не входит"):
         evaluator.evaluate("={{ process.env.SECRET }}", item)
+
+
+def test_expression_reads_current_input_and_linked_previous_node_items() -> None:
+    """Resolve `$input` and linked/selected outputs from a named earlier node."""
+    evaluator = N8nExpressionEvaluator()
+    first = WorkflowItem(
+        json={"value": "first"},
+        binary={"document": {"fileName": "first.pdf", "mimeType": "application/pdf"}},
+    )
+    second = WorkflowItem(
+        json={"value": "second"},
+        binary={"document": {"fileName": "second.pdf", "mimeType": "application/pdf"}},
+    )
+    current = WorkflowItem(json={"current": True}, lineage={"Source Node": 1})
+    context = NodeExecutionContext(
+        input_port=None,
+        invocation_number=1,
+        state={},
+        input_items=(first, second),
+        node_outputs={"Source Node": (first, second)},
+    )
+
+    assert (
+        evaluator.evaluate("={{ $('Source Node').item.json.value }}", current, context=context)
+        == "second"
+    )
+    assert (
+        evaluator.evaluate(
+            "={{ $('Source Node').item.binary.document.fileName }}", current, context=context
+        )
+        == "second.pdf"
+    )
+    assert (
+        evaluator.evaluate("={{ $('Source Node').first().json.value }}", current, context=context)
+        == "first"
+    )
+    assert (
+        evaluator.evaluate("={{ $('Source Node').last().json.value }}", current, context=context)
+        == "second"
+    )
+    assert (
+        evaluator.evaluate(
+            "={{ $('Source Node').all().first().json.value }}", current, context=context
+        )
+        == "first"
+    )
+    assert (
+        evaluator.evaluate(
+            "={{ $('Source Node').all().last().binary.document.fileName }}",
+            current,
+            context=context,
+        )
+        == "second.pdf"
+    )
+    assert evaluator.evaluate("={{ $input.item.json.value }}", second, context=context) == "second"
+    assert (
+        evaluator.evaluate(
+            "={{ $input.all()[0].binary.document.fileName }}", current, context=context
+        )
+        == "first.pdf"
+    )
+    assert (
+        evaluator.evaluate(
+            "={{ $input.all()[0].json.value + ':' + $input.all().length }}",
+            current,
+            context=context,
+        )
+        == "first:2"
+    )
+    assert (
+        evaluator.evaluate("={{ $input.all().first().json.value }}", current, context=context)
+        == "first"
+    )
+    assert (
+        evaluator.evaluate("={{ $input.all().last().json.value }}", current, context=context)
+        == "second"
+    )
+
+
+def test_expression_rejects_first_or_last_on_empty_all_items() -> None:
+    """Fail with a useful message when a chained selector has no input items."""
+    evaluator = N8nExpressionEvaluator()
+    current = WorkflowItem(json={})
+    context = NodeExecutionContext(
+        input_port=None,
+        invocation_number=1,
+        state={},
+        input_items=(),
+        node_outputs={"Empty Source": ()},
+    )
+
+    with pytest.raises(UnsupportedNodeConfigurationError, match="пустого массива"):
+        evaluator.evaluate("={{ $('Empty Source').all().first().json }}", current, context=context)
