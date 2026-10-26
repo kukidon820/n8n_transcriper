@@ -1,8 +1,8 @@
 """Контракты и реестр асинхронных обработчиков workflow-узлов."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 from ..domain.models.workflow import WorkflowNode
 from .errors import UnsupportedNodeTypeError
@@ -15,6 +15,8 @@ class NodeExecutionContext:
 
     input_port: RuntimeInputPort | None
     invocation_number: int
+    state: dict[str, Any]
+    services: Mapping[str, Any] = field(default_factory=dict)
 
 
 class NodeExecutor(Protocol):
@@ -35,20 +37,42 @@ class NodeExecutor(Protocol):
 class NodeExecutorRegistry:
     """Ищет runtime-обработчики по `node.type`."""
 
-    def __init__(self, executors: Mapping[str, NodeExecutor]):
-        """Скопировать карту зарегистрированных типов узлов."""
+    def __init__(
+        self,
+        executors: Mapping[str | tuple[str, float], NodeExecutor],
+        *,
+        node_executors: Mapping[str, NodeExecutor] | None = None,
+    ):
+        """Скопировать обработчики по типу/версии и, при необходимости, имени узла."""
         self._executors = dict(executors)
+        self._node_executors = dict(node_executors or {})
 
     def is_trigger(self, node: WorkflowNode) -> bool:
         """Сообщить, помечен ли зарегистрированный обработчик как trigger."""
-        executor = self._executors.get(node.type)
+        executor = self._find(node)
         return executor is not None and executor.is_trigger
 
     def get(self, node: WorkflowNode) -> NodeExecutor:
         """Вернуть обработчик узла или явно сообщить о неподдержанном типе."""
+        executor = self._find(node)
+        if executor is not None:
+            return executor
+        raise UnsupportedNodeTypeError(
+            f"Для узла {node.name!r} типа {node.type!r} версии "
+            f"{node.type_version!r} нет runtime-обработчика."
+        )
+
+    def _find(self, node: WorkflowNode) -> NodeExecutor | None:
+        """Сначала искать точную регистрацию узла, затем версионную или общую."""
+        node_executor = self._node_executors.get(node.name)
+        if node_executor is not None:
+            return node_executor
+
+        versioned = self._executors.get((node.type, node.type_version))
+        if versioned is not None:
+            return versioned
+
         try:
             return self._executors[node.type]
-        except KeyError as error:
-            raise UnsupportedNodeTypeError(
-                f"Для узла {node.name!r} типа {node.type!r} нет runtime-обработчика."
-            ) from error
+        except KeyError:
+            return None

@@ -1,0 +1,12 @@
+{
+  "name": "postgres query node",
+  "nodes": [
+    {"id": "manual", "name": "Manual", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {}},
+    {"id": "set", "name": "Input", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [200, 0], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "value", "value": 42, "type": "number"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "postgres", "name": "Query", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [400, 0], "parameters": {"operation": "executeQuery", "query": "SELECT $1 AS value", "queryReplacement": "={{ $json.value }}", "options": {}}}
+  ],
+  "connections": {
+    "Manual": {"main": [[{"node": "Input", "type": "main", "index": 0}]]},
+    "Input": {"main": [[{"node": "Query", "type": "main", "index": 0}]]}
+  }
+}

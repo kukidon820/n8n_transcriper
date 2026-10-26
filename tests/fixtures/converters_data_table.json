@@ -1,0 +1,14 @@
+{
+  "name": "data table insert and get",
+  "nodes": [
+    {"id": "manual", "name": "Manual", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {}},
+    {"id": "set", "name": "Input", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [200, 0], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "key", "value": "alpha", "type": "string"}, {"name": "value", "value": 42, "type": "number"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "insert", "name": "Insert row", "type": "n8n-nodes-base.dataTable", "typeVersion": 1.1, "position": [400, 0], "parameters": {"resource": "row", "operation": "insert", "dataTableId": {"__rl": true, "mode": "id", "value": "test-data-table"}, "columns": {"mappingMode": "autoMapInputData", "value": {}, "schema": [], "matchingColumns": [], "attemptToConvertTypes": false, "convertFieldsToString": false}, "options": {}}},
+    {"id": "get", "name": "Get row", "type": "n8n-nodes-base.dataTable", "typeVersion": 1.1, "position": [600, 0], "parameters": {"resource": "row", "operation": "get", "dataTableId": {"__rl": true, "mode": "id", "value": "test-data-table"}, "matchType": "allConditions", "filters": {"conditions": [{"keyName": "key", "condition": "eq", "keyValue": "={{ $json.key }}"}]}, "limit": 10, "options": {}}}
+  ],
+  "connections": {
+    "Manual": {"main": [[{"node": "Input", "type": "main", "index": 0}]]},
+    "Input": {"main": [[{"node": "Insert row", "type": "main", "index": 0}]]},
+    "Insert row": {"main": [[{"node": "Get row", "type": "main", "index": 0}]]}
+  }
+}
