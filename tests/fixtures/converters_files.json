@@ -1,0 +1,14 @@
+{
+  "name": "webhook and binary file nodes",
+  "nodes": [
+    {"id": "webhook", "name": "Incoming", "type": "n8n-nodes-base.webhook", "typeVersion": 2.1, "position": [0, 0], "parameters": {"path": "files", "httpMethod": "POST", "responseMode": "onReceived", "options": {}}},
+    {"id": "compress", "name": "ZIP", "type": "n8n-nodes-base.compression", "typeVersion": 1.1, "position": [200, 0], "parameters": {"operation": "compress", "binaryPropertyName": "data", "outputFormat": "zip", "fileName": "records.json", "binaryPropertyOutput": "archive", "options": {}}},
+    {"id": "decompress", "name": "Unzip", "type": "n8n-nodes-base.compression", "typeVersion": 1.1, "position": [400, 0], "parameters": {"operation": "decompress", "binaryPropertyName": "archive", "outputFormat": "zip", "outputPrefix": "unpacked_", "options": {}}},
+    {"id": "extract", "name": "Extract", "type": "n8n-nodes-base.extractFromFile", "typeVersion": 1.2, "position": [600, 0], "parameters": {"operation": "fromJson", "binaryPropertyName": "unpacked_records.json", "destinationKey": "parsed", "options": {"keepSource": false}}}
+  ],
+  "connections": {
+    "Incoming": {"main": [[{"node": "ZIP", "type": "main", "index": 0}]]},
+    "ZIP": {"main": [[{"node": "Unzip", "type": "main", "index": 0}]]},
+    "Unzip": {"main": [[{"node": "Extract", "type": "main", "index": 0}]]}
+  }
+}
