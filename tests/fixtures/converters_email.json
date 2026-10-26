@@ -1,0 +1,12 @@
+{
+  "name": "SMTP email node",
+  "nodes": [
+    {"id": "manual", "name": "Manual", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {}},
+    {"id": "set", "name": "Input", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [200, 0], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "to", "value": "receiver@example.test", "type": "string"}, {"name": "name", "value": "Test User", "type": "string"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "email", "name": "Send email", "type": "n8n-nodes-base.emailSend", "typeVersion": 2.1, "position": [400, 0], "parameters": {"fromEmail": "sender@example.test", "toEmail": "={{ $json.to }}", "subject": "Hello {{ $json.name }}", "text": "Message for {{ $json.name }}", "options": {}}}
+  ],
+  "connections": {
+    "Manual": {"main": [[{"node": "Input", "type": "main", "index": 0}]]},
+    "Input": {"main": [[{"node": "Send email", "type": "main", "index": 0}]]}
+  }
+}

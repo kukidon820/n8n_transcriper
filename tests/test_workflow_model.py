@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from n8n_to_python.domain.models.workflow import Workflow, WorkflowConnection
 
 WORKFLOW_FIXTURE = Path(__file__).parent / "fixtures" / "workflow_test.json"
+SANITIZED_EXPORT_FIXTURE = Path(__file__).parent / "fixtures" / "workflow_export_sanitized.json"
 
 
 def read_workflow_fixture() -> dict[str, Any]:
@@ -48,6 +49,19 @@ def test_model_parses_main_and_ai_connection_ports() -> None:
     switch_node = next(node for node in workflow.nodes if node.type == "n8n-nodes-base.switch")
     assert len(workflow.connections[if_node.name]["main"]) == 2
     assert len(workflow.connections[switch_node.name]["main"]) == 3
+
+
+def test_model_parses_sanitized_full_workflow_export() -> None:
+    """Validate a scrubbed 54-node export with its original graph shape intact."""
+    workflow = Workflow.model_validate_json(SANITIZED_EXPORT_FIXTURE.read_bytes())
+
+    assert len(workflow.nodes) == 54
+    assert len(workflow.connections) == 47
+    assert any(
+        port.startswith("ai_")
+        for connection_types in workflow.connections.values()
+        for port in connection_types
+    )
 
 
 def test_model_preserves_unknown_workflow_node_and_connection_fields() -> None:
