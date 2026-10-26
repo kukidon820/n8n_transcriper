@@ -311,6 +311,7 @@ class LangGraphAIAgentExecutor:
                     self._agent_parameters.text,
                     item,
                     item_index=item_index,
+                    context=context,
                 )
                 if not isinstance(prompt, str):
                     prompt = str(prompt)
@@ -318,9 +319,10 @@ class LangGraphAIAgentExecutor:
                     self._agent_parameters.options.system_message,
                     item,
                     item_index=item_index,
+                    context=context,
                 )
                 history_key = (
-                    self._memory_key(item, item_index) if self._memory_parameters else None
+                    self._memory_key(item, item_index, context) if self._memory_parameters else None
                 )
                 history = (
                     list(context.state.get(history_key, [])) if history_key is not None else []
@@ -352,7 +354,9 @@ class LangGraphAIAgentExecutor:
                 output_items.append(WorkflowItem(json=updated_json, binary=item.binary))
         return NodeResult(outputs=(tuple(output_items),))
 
-    def _memory_key(self, item: WorkflowItem, item_index: int) -> str:
+    def _memory_key(
+        self, item: WorkflowItem, item_index: int, context: NodeExecutionContext
+    ) -> str:
         """Resolve a Simple Memory custom session key with the supported expression subset."""
         if self._memory_parameters is None or self._memory_node is None:
             raise RuntimeError("Memory key запрошен для AI Agent без Simple Memory.")
@@ -360,6 +364,7 @@ class LangGraphAIAgentExecutor:
             self._memory_parameters.session_key,
             item,
             item_index=item_index,
+            context=context,
         )
         return f"ai-memory:{self._memory_node.name}:{session_key}"
 

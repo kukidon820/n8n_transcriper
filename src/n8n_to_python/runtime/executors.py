@@ -17,6 +17,8 @@ class NodeExecutionContext:
     invocation_number: int
     state: dict[str, Any]
     services: Mapping[str, Any] = field(default_factory=dict)
+    input_items: tuple[WorkflowItem, ...] = ()
+    node_outputs: Mapping[str, tuple[WorkflowItem, ...]] = field(default_factory=dict)
 
 
 class NodeExecutor(Protocol):

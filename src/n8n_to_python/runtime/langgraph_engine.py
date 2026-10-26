@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from ..domain.models.workflow import Workflow, WorkflowNode
+from .engine import WorkflowExecutionEngine
 from .errors import (
     ExecutionLimitExceededError,
     InvalidNodeOutputError,
@@ -31,6 +32,7 @@ class LangGraphWorkflowState(TypedDict):
     input_port: RuntimeInputPort | None
     invocation_counts: dict[str, int]
     run_state: dict[str, Any]
+    node_outputs: dict[str, list[WorkflowItem]]
     services: dict[str, Any]
     executions: list[NodeExecutionRecord]
     terminal_outputs: list[TerminalOutput]
@@ -128,6 +130,7 @@ class LangGraphExecutionEngine:
             "input_port": None,
             "invocation_counts": {},
             "run_state": {},
+            "node_outputs": {},
             "services": dict(services or {}),
             "executions": [],
             "terminal_outputs": [],
@@ -166,6 +169,10 @@ class LangGraphExecutionEngine:
                 invocation_number=counts[node.name],
                 state=state["run_state"],
                 services=state["services"],
+                input_items=items,
+                node_outputs={
+                    name: tuple(values) for name, values in state["node_outputs"].items()
+                },
             )
             try:
                 result = await executor.execute(node, items, context)
@@ -183,6 +190,7 @@ class LangGraphExecutionEngine:
                     f"Узел {node.name!r} подключён к {expected_slots} выходам `main`, "
                     f"но вернул только {len(result.outputs)}."
                 )
+            paired_indexes = WorkflowExecutionEngine._paired_input_indexes(result, items, node.name)
             executions.append(
                 NodeExecutionRecord(
                     node_name=node.name,
@@ -197,18 +205,33 @@ class LangGraphExecutionEngine:
             next_edges: list[tuple[int, tuple[WorkflowItem, ...], str, RuntimeInputPort]] = []
             terminal_outputs = list(state["terminal_outputs"])
             terminal_candidates: list[tuple[int, tuple[WorkflowItem, ...]]] = []
+            node_outputs = {name: list(values) for name, values in state["node_outputs"].items()}
             for output_index, batch in enumerate(result.outputs):
-                if not batch:
+                if batch is None:
+                    continue
+                history = node_outputs.setdefault(node.name, [])
+                history_offset = len(history)
+                linked_batch: list[WorkflowItem] = []
+                for item_index, item in enumerate(batch):
+                    parent_index = paired_indexes[output_index][item_index]
+                    lineage = dict(item.lineage)
+                    if parent_index is not None:
+                        lineage = {**items[parent_index].lineage, **lineage}
+                    lineage[node.name] = history_offset + item_index
+                    linked_batch.append(item.model_copy(update={"lineage": lineage}))
+                linked_items = tuple(linked_batch)
+                history.extend(linked_items)
+                if not linked_items:
                     continue
                 targets = plan.outgoing.get((node.name, output_index), ())
                 if not targets:
-                    terminal_candidates.append((output_index, self._copy_items(batch)))
+                    terminal_candidates.append((output_index, self._copy_items(linked_items)))
                     continue
                 for target in targets:
                     next_edges.append(
                         (
                             output_index,
-                            self._copy_items(batch),
+                            self._copy_items(linked_items),
                             target.target_node,
                             target.target_input,
                         )
@@ -224,6 +247,7 @@ class LangGraphExecutionEngine:
             update: dict[str, Any] = {
                 "invocation_counts": counts,
                 "run_state": state["run_state"],
+                "node_outputs": node_outputs,
                 "executions": executions,
                 "terminal_outputs": terminal_outputs,
                 "next_node_name": None,
