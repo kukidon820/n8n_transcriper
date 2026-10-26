@@ -1,0 +1,1628 @@
+{
+  "name": "Упоминания · строгий GEO/язык/мат/Сбер РБ",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "eccc571d-49d0-4c18-86c5-e306e8535ada",
+      "name": "00 · Запустить тест вручную",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        10736,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Тест всегда показывает вечерний формат, включая итоговую AI-сводку.\n// Бренд меняется здесь так же, как в боевой версии.\nconst now = new Date();\nconst start = new Date(now.getTime() - 24 * 3600000);\nreturn [{ json: {\n  brand: 'СБЕР',\n  brand_aliases: ['Сбер', 'Сбербанк', 'Сбер Банк', 'Sber', 'Sberbank', '@sber', '@sberbank'],\n  run_type: 'evening',\n  run_label: 'ТЕСТ · Вечер',\n  window_start_iso: start.toISOString(),\n  window_end_iso: now.toISOString(),\n  window_end_requested_iso: now.toISOString(),\n  api_start_date: start.toISOString().slice(0, 10),\n  api_end_date: now.toISOString().slice(0, 10),\n  strict_russian_only: true,\n  reject_profanity: true,\n  geo_stop_enabled: true,\n  reject_social_spam: true,\n  require_confirmed_sber_belarus: true,\n  language_filter: {\n    enabled: true,\n    minRussianLetters: 5,\n    minRussianShare: 0.70,\n    maxLatinShare: 0.30,\n    rejectForeignCyrillic: true,\n  },\n  geo_stop_pattern: '(?:^|[^\\\\p{L}\\\\p{N}_])(?:росси\\\\p{L}*|russia\\\\p{L}*|russian\\\\p{L}*|рф|казахстан\\\\p{L}*|kazakhstan\\\\p{L}*|kz|rub|тенге\\\\p{L}*|алмат\\\\p{L}*|almaty|астан\\\\p{L}*|astana|москв\\\\p{L}*|moscow|санкт[\\\\s-]*петербург\\\\p{L}*|saint[\\\\s-]*petersburg|st[.\\\\s-]*petersburg|питер\\\\p{L}*|новосибирск\\\\p{L}*|novosibirsk|екатеринбург\\\\p{L}*|yekaterinburg|краснодар\\\\p{L}*|krasnodar|владивосток\\\\p{L}*|vladivostok)(?=$|[^\\\\p{L}\\\\p{N}_])|🇷🇺|🇰🇿',\n  profanity_pattern: '(?:^|[^\\\\p{L}])(?:[хx][уy][йеяию\\\\p{L}]*|п[ие]зд\\\\p{L}*|бл(?:я|еа)(?:д|т)?\\\\p{L}*|(?:е|ё|e)б(?:а|у|и|ё|н|л|т|ы)\\\\p{L}*|муд(?:ак|ил)\\\\p{L}*|долбо(?:е|ё)б\\\\p{L}*|сук(?:а|и|у|ой)\\\\p{L}*|fuck\\\\p{L}*|shit\\\\p{L}*|bitch\\\\p{L}*|asshole\\\\p{L}*|motherfuck\\\\p{L}*|cunt\\\\p{L}*)(?=$|[^\\\\p{L}])',\n  social_spam_pattern: '(?:ветк\\\\p{L}*\\\\s+знакомств\\\\p{L}*|давайте\\\\s+знакомиться|давай\\\\s+познакомимся|ищу\\\\s+(?:парня|девушку|знакомства)|пишит\\\\p{L}*\\\\s+в\\\\s+комментари\\\\p{L}*|напишит\\\\p{L}*\\\\s+в\\\\s+комментари\\\\p{L}*|подпишит\\\\p{L}*\\\\s+на\\\\s+(?:меня|аккаунт|профиль)|подписывайт\\\\p{L}*|взаимн\\\\p{L}*\\\\s+подписк\\\\p{L}*|подписка\\\\s+на\\\\s+(?:меня|аккаунт|профиль))',\n  mock_mode: true,\n} }];\n"
+      },
+      "id": "859fdd71-4bb2-4531-baf0-21cad0b2e88e",
+      "name": "01 · Настройка бренда и окна",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10976,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// MOCK ТОЛЬКО SocialCrawl. Следующая AI Agent-нода использует настоящий OpenRouter.\nconst cfg = $input.first().json;\nconst now = Date.now();\nconst ago = (minutes) => new Date(now - minutes * 60000).toISOString();\nconst item = (id, user, name, text, minutes, city, views, likes, replies, reposts, comments = []) => ({\n  id,\n  url: 'https://www.threads.com/@' + user + '/post/' + id,\n  text,\n  published_at: ago(minutes),\n  author: { username: user, display_name: name, bio: city + ', Беларусь', location: city },\n  engagement: { views, likes, replies, reposts },\n  comments: comments.map((value, index) => ({ id: id + '_c' + index, text: value })),\n});\n\nconst items = [\n  item('MOCKBY001', 'minsk_driver', 'Алексей', 'Сбер, почему перевод в BYN завис уже на шесть часов? Поддержка отвечает шаблонами. Минск.', 35, 'Минск', 18400, 420, 96, 38, ['У меня вчера было так же', 'Напишите номер обращения', 'После повторного звонка перевод дошёл']),\n  item('MOCKBY002', 'olga_brest', 'Ольга', 'Спасибо @sberbank: быстро заблокировали карту после подозрительной операции и всё объяснили. Брест.', 58, 'Брест', 9200, 610, 42, 55, ['Редко хвалят поддержку, но тут заслуженно', 'А деньги уже вернули?']),\n  item('MOCKBY003', 'gomel_finance', 'Денис', 'Кто пользовался накопительным счётом Сбер? Интересуют реальные условия и снятие без потери процентов. Гомель.', 76, 'Гомель', 6400, 180, 73, 21, ['Смотрите условия по минимальному остатку', 'Процент меняется, проверяйте приложение']),\n  item('MOCKBY004', 'vitebsk_shop', 'Марина', 'Осторожно: в Viber пишут якобы от Сбер и просят назвать код. Это мошенники. Витебск, предупредите родителей.', 110, 'Витебск', 31800, 1200, 205, 310, ['Маме сегодня тоже написали', 'Банк никогда не просит код', 'Куда отправить номер мошенника?']),\n  item('MOCKBY005', 'hrodna_today', 'Гродно сегодня', 'Приложение Sber сегодня дважды выбросило на вход. У кого ещё так в Гродно?', 145, 'Гродно', 22100, 530, 187, 44, ['Есть такая проблема', 'На Android после обновления', 'У меня работает нормально']),\n  item('MOCKBY006', 'mogilev_family', 'Семья из Могилёва', 'В отделении Сбер в Могилёве сотрудница спокойно помогла пожилому человеку настроить оплату ЖКХ. Хороший сервис.', 195, 'Могилёв', 5700, 390, 28, 19, ['Такие истории приятно читать']),\n  item('MOCKBY007', 'pinsk_business', 'Бизнес Пинска', 'Эквайринг Сбер списал комиссию выше ожидаемой. Пинск, малый бизнес. Нужен понятный разбор тарифа.', 225, 'Пинск', 12800, 270, 84, 30, ['Проверьте категорию операции', 'У нас комиссия тоже выросла']),\n  item('MOCKBY008', 'bobruisk_student', 'Студент', 'Есть ли у Сбер нормальная карта для студента в Беларуси без платного обслуживания?', 260, 'Бобруйск', 4100, 95, 61, 12, ['Есть молодёжный вариант', 'Сравните кешбэк и стоимость']),\n  item('MOCKBY009', 'minsk_cafe', 'Кафе в Минске', 'Терминал @sber перестал принимать оплату в обед, очередь в кафе. Минск. Через 20 минут заработал.', 310, 'Минск', 15400, 350, 112, 47, ['В соседнем магазине тоже было', 'Главное, что быстро восстановили']),\n  item('MOCKBY010', 'baranovichi_mom', 'Ирина', 'Получила кешбэк от Сбер за покупки — всё начислилось правильно и вовремя. Барановичи.', 390, 'Барановичи', 3600, 245, 17, 11, ['Какая категория была повышенная?']),\n  item('MOCKBY011', 'lida_news', 'Новости Лиды', 'В Лиде появилось объявление о вакансии от имени Sberbank. Кто знает, это официальный набор?', 470, 'Лида', 7400, 140, 52, 24, ['Проверьте домен почты', 'Похоже на старое объявление']),\n  item('MOCKBY012', 'soligorsk_user', 'Павел', 'Сбер прислал уведомление о техработах заранее. Нейтрально: ночью часть функций будет недоступна. Солигорск.', 620, 'Солигорск', 2900, 76, 14, 5),\n  // Должны быть отброшены: нет подтверждённой связи с Беларусью.\n  item('MOCKFOREIGN1', 'moscow_user', 'Иван', 'Сбер снова изменил условия обслуживания.', 90, 'Москва', 50000, 900, 300, 200),\n  item('MOCKFOREIGN2', 'prague_life', 'Pavel', 'Question about Sberbank service in Europe.', 130, 'Прага', 8000, 100, 20, 4),\n];\n\n// У иностранных контрольных записей специально убираем Belarus из mock-профиля.\nitems.find((value) => value.id === 'MOCKFOREIGN1').author = { username: 'moscow_user', display_name: 'Иван', bio: 'Москва, Россия', location: 'Москва' };\nitems.find((value) => value.id === 'MOCKFOREIGN2').author = { username: 'prague_life', display_name: 'Pavel', bio: 'Praha, Czechia', location: 'Praha' };\n\nreturn [{ json: { success: true, platform: 'threads', endpoint: '/v1/threads/search', data: { items, total: items.length, dropped: 0 }, mock_config: cfg } }];\n"
+      },
+      "id": "714b69e4-1f5a-48f4-81d9-c254c50cc215",
+      "name": "02 · MOCK SocialCrawl — много постов",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11232,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('01 · Настройка бренда и окна').first().json;\nconst inputs = $input.all();\nconst startMs = Date.parse(cfg.window_start_iso);\nconst endMs = Date.parse(cfg.window_end_iso);\nconst blocked = /(?:\\b18\\s*\\+|порн|эрот|интим|onlyfans|эскорт|проститу|наркот|казино|букмекер|политик|выбор|президент|правительств|парламент|депутат|министр|геополит|санкци|войн|военн|обстрел|ракет|оппозици|митинг|протест)/iu;\nconst rb = /(?:беларус|белорус|беларуск|belarus|\\bby\\b|\\bbyn\\b|минск|minsk|гомел|gomel|homiel|брест|brest|витебск|vitebsk|могил[её]в|mogilev|гродно|grodno|hrodna|бобруйск|баранович|полоцк|новополоцк|солигорск|жодино|лида|пинск|мозыр|орша|борисов|молодечно|\\bрб\\b|бел\\.?\\s*руб)/iu;\n\nconst cleanFilterText = (value) => String(value || '')\n  .replace(/https?:\\/\\/\\S+/giu, ' ')\n  .replace(/www\\.\\S+/giu, ' ')\n  .replace(/@[\\p{L}\\p{N}_.]+/gu, ' ')\n  .replace(/#[\\p{L}\\p{N}_]+/gu, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\nconst isRussianText = (value) => {\n  const source = cleanFilterText(value);\n  const letters = source.match(/\\p{L}/gu) || [];\n  if (!letters.length) return false;\n  const ru = (source.match(/[А-Яа-яЁё]/g) || []).length;\n  const latin = (source.match(/[A-Za-z]/g) || []).length;\n  const foreign = (source.match(/[ІіЇїЄєҐґЎў]/g) || []).length;\n  const f = cfg.language_filter || {};\n  return ru >= Number(f.minRussianLetters || 5)\n    && ru / letters.length >= Number(f.minRussianShare || 0.70)\n    && latin / letters.length <= Number(f.maxLatinShare || 0.30)\n    && (!f.rejectForeignCyrillic || foreign === 0);\n};\nconst geoStop = new RegExp(cfg.geo_stop_pattern || '(?!)', 'iu');\nconst profanityStop = new RegExp(cfg.profanity_pattern || '(?!)', 'iu');\nconst socialSpamStop = new RegExp(cfg.social_spam_pattern || '(?!)', 'iu');\nconst extendedTopicStop = /(?:политик\\p{L}*|межнациональн\\p{L}*|межэтническ\\p{L}*|конфликт\\p{L}*|столкновени\\p{L}*|вражд\\p{L}*|противостояни\\p{L}*|аборт\\p{L}*|прерыван\\p{L}*\\s+беременн\\p{L}*|эвтанази\\p{L}*|религи\\p{L}*|церков\\p{L}*|христиан\\p{L}*|православ\\p{L}*|католиц\\p{L}*|ислам\\p{L}*|мусульман\\p{L}*|иудаизм\\p{L}*|атеизм\\p{L}*|аллах\\p{L}*|господ\\p{L}*|(?:^|[^\\p{L}])бог(?:а|у|ом|е|и)?(?=$|[^\\p{L}])|секс\\p{L}*|сексуальн\\p{L}*|цензур\\p{L}*|домашн\\p{L}*\\s+насили\\p{L}*|семейн\\p{L}*\\s+насили\\p{L}*|абьюз\\p{L}*|интимн\\p{L}*\\s+подробност\\p{L}*|половы\\p{L}*\\s+орган\\p{L}*|менструац\\p{L}*|эрекци\\p{L}*|эякуляц\\p{L}*|чайлдфри\\p{L}*|childfree|гендерн\\p{L}*\\s+(?:равенств\\p{L}*|неравенств\\p{L}*)|феминиз\\p{L}*|сексизм\\p{L}*|эйджизм\\p{L}*|дискриминаци\\p{L}*|расизм\\p{L}*|расист\\p{L}*|экстремистск\\p{L}*\\s+(?:символик\\p{L}*|атрибут\\p{L}*)|свастик\\p{L}*|национализм\\p{L}*|националист\\p{L}*|нацизм\\p{L}*|нацист\\p{L}*|неонаци\\p{L}*|наркот\\p{L}*|кокаин\\p{L}*|героин\\p{L}*|марихуан\\p{L}*|каннабис\\p{L}*|гашиш\\p{L}*|амфетамин\\p{L}*|метамфетамин\\p{L}*|мефедрон\\p{L}*|экстази\\p{L}*|психотроп\\p{L}*|оружи\\p{L}*|пистолет\\p{L}*|винтовк\\p{L}*|огнестрельн\\p{L}*|боеприпас\\p{L}*|взрывчат\\p{L}*|суицид\\p{L}*|самоубий\\p{L}*|самоповреждени\\p{L}*)/iu;\nconst criticismStop = /(?:критик\\p{L}*|недовольств\\p{L}*|возмущ\\p{L}*|обвин\\p{L}*|жалоб\\p{L}*|претензи\\p{L}*|бездейств\\p{L}*|произвол\\p{L}*|коррупц\\p{L}*|репресси\\p{L}*|некомпетент\\p{L}*|неэффектив\\p{L}*|нарушени\\p{L}*|провал\\p{L}*)/iu;\nconst governmentStop = /(?:государственн\\p{L}*\\s+(?:институт\\p{L}*|орган\\p{L}*)|орган\\p{L}*\\s+власт\\p{L}*|власт\\p{L}*|правительств\\p{L}*|парламент\\p{L}*|министерств\\p{L}*|ведомств\\p{L}*|администраци\\p{L}*|чиновник\\p{L}*|прокуратур\\p{L}*|милици\\p{L}*|полици\\p{L}*|суд\\p{L}*)/iu;\n\n\nconst escRe = (value) => String(value).replace(/[.*+?^{}$()|[\\]\\\\]/g, '\\\\$&');\nconst aliasSource = cfg.brand_aliases.map((value) => escRe(String(value).replace(/^@/, ''))).sort((a, b) => b.length - a.length).join('|');\nconst mention = new RegExp('(?:^|[^\\\\p{L}\\\\p{N}_])@?(?:' + aliasSource + ')(?=$|[^\\\\p{L}\\\\p{N}_])', 'iu');\nconst first = (...values) => values.find((value) => value !== undefined && value !== null && value !== '');\nconst num = (...values) => {\n  const value = first(...values);\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;\n};\nconst textOf = (value) => typeof value === 'string' ? value : value ? JSON.stringify(value) : '';\nconst wrappers = [];\nfor (const input of inputs) {\n  const body = input.json || {};\n  const list = Array.isArray(body?.data?.items) ? body.data.items\n    : Array.isArray(body?.items) ? body.items\n    : Array.isArray(body?.data?.posts) ? body.data.posts\n    : Array.isArray(body?.posts) ? body.posts\n    : Array.isArray(body?.results) ? body.results\n    : Array.isArray(body?.data) ? body.data : [];\n  wrappers.push(...list);\n}\n\nconst unique = new Map();\nfor (const wrapper of wrappers) {\n  const post = wrapper?.post || wrapper;\n  const id = String(first(post?.id, wrapper?.id, post?.url, wrapper?.url, ''));\n  if (id && !unique.has(id)) unique.set(id, wrapper);\n}\n\nconst posts = [];\nfor (const [id, wrapper] of unique.entries()) {\n  const post = wrapper?.post || wrapper;\n  const content = post?.content || {};\n  const author = post?.author || wrapper?.author || {};\n  const engagement = post?.engagement || wrapper?.engagement || {};\n  const sourceText = String(first(content?.text, post?.text, wrapper?.text, '')).trim();\n  const username = String(first(author?.username, author?.handle, 'unknown')).replace(/^@/, '');\n  const authorName = String(first(author?.display_name, author?.name, username));\n  const locationText = [author?.location, author?.bio, author?.country, post?.location, post?.place, post?.geo, wrapper?.location, wrapper?.place, wrapper?.geo].map(textOf).join(' ');\n  const searchable = [sourceText, username, authorName, locationText].join(' ');\n  const publishedAt = String(first(post?.published_at, wrapper?.published_at, post?.created_at, wrapper?.created_at, ''));\n  const publishedMs = Date.parse(publishedAt);\n  const countryCode = String(first(author?.country_code, post?.country_code, wrapper?.country_code, '')).toUpperCase();\n  if (!sourceText || !mention.test(sourceText)) continue;\n  if (cfg.strict_russian_only && !isRussianText(sourceText)) continue;\n  if (cfg.reject_profanity && profanityStop.test(sourceText)) continue;\n  if (cfg.reject_social_spam && socialSpamStop.test(sourceText)) continue;\n  if (cfg.geo_stop_enabled && geoStop.test(searchable)) continue;\n  if (\n    blocked.test(searchable)\n    || extendedTopicStop.test(searchable)\n    || (criticismStop.test(searchable) && governmentStop.test(searchable))\n  ) continue;\n  if (!Number.isFinite(publishedMs) || publishedMs < startMs || publishedMs > endMs) continue;\n  if (!(countryCode === 'BY' || rb.test(searchable))) continue;\n\n  const candidateLists = [wrapper?.comments, wrapper?.replies, post?.comments, post?.replies, post?.ext?.comments, post?.ext?.replies].filter(Array.isArray);\n  const commentSamples = [];\n  for (const list of candidateLists) {\n    for (const entry of list) {\n      const value = String(entry?.content?.text || entry?.text || entry?.body || entry?.comment_text || '').trim();\n      if (value && !commentSamples.includes(value)) commentSamples.push(value.slice(0, 280));\n      if (commentSamples.length >= 8) break;\n    }\n    if (commentSamples.length >= 8) break;\n  }\n  const url = String(first(post?.url, wrapper?.url, ''));\n  posts.push({\n    id,\n    url,\n    text: sourceText.slice(0, 1600),\n    mention_matches: sourceText.match(mention)?.[0]?.trim() || cfg.brand,\n    published_at: publishedAt,\n    author: { username, name: authorName, location: locationText.slice(0, 300), verified: Boolean(author?.verified) },\n    belarus_evidence: countryCode === 'BY' ? 'country_code=BY' : (locationText.match(rb)?.[0] || sourceText.match(rb)?.[0] || 'Беларусь указана во входных данных'),\n    metrics: {\n      views: num(engagement?.views, engagement?.view_count, post?.views_count, wrapper?.views),\n      likes: num(engagement?.likes, engagement?.like_count, post?.likes_count, wrapper?.likes),\n      replies: num(engagement?.replies, engagement?.comments, engagement?.reply_count, post?.reply_count, wrapper?.replies, wrapper?.comments_count),\n      reposts: num(engagement?.reposts, engagement?.shares, engagement?.repost_count, post?.repost_count, wrapper?.reposts, wrapper?.shares),\n    },\n    comment_samples: commentSamples,\n    comment_text_status: commentSamples.length ? 'available' : 'unavailable_from_socialcrawl',\n  });\n  if (posts.length >= 50) break;\n}\n\nif (!posts.length) return [];\nreturn [{ json: { ...cfg, posts } }];\n"
+      },
+      "id": "86a4b036-579e-4e83-a906-ac6e7069602e",
+      "name": "03 · Только бренд + Беларусь + окно",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11488,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst batch = $input.first().json;\nconst posts = batch.posts || [];\nconst state = $getWorkflowStaticData('global');\nconst dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Minsk', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(batch.window_end_iso));\nconst earlierMentions = batch.run_type === 'evening' && state.brandMentionMorning?.day_key === dayKey\n  ? (state.brandMentionMorning.records || [])\n  : [];\nconst prompt = [\n  'Проанализируй ВСЕ упоминания бренда ' + batch.brand + ' в Threads. Это social listening по Беларуси.',\n  'Повторно проверь каждый пост. Разрешай только русскоязычный текст без мата, без GEO-стопов России/Казахстана, без спама знакомств/подписок и только про Сбер Банк Беларусь.',\n  'Верни mandatory_filter_passed=true только если выполнены все условия. Иначе false и заполни mandatory_filter_reason.',\n  'Каждый входной пост уже прошёл технический фильтр бренда, времени, Беларуси и запретных тем. Не меняй id.',\n  'Для каждого поста определи sentiment строго: negative, neutral или positive.',\n  'should_respond=true, если есть жалоба, риск репутации/мошенничества, вопрос, фактическая ошибка или возможность полезно помочь. Для пустой похвалы и простого информационного упоминания обычно false.',\n  'reaction_recommendation — конкретно: реагировать/не реагировать, насколько срочно и почему.',\n  'response_idea — фактический замысел ответа бренда, без выдуманных обещаний, признания вины и неподтверждённых деталей.',\n  'post_title — короткий информативный заголовок до 90 символов, не кликбейт.',\n  'comment_summary можно строить ТОЛЬКО по comment_samples. Если comment_samples пуст, напиши точно: «Тексты комментариев недоступны; известно только количество ответов: N». Никогда не выдумывай содержание комментариев.',\n  'mention_quote — короткая точная цитата/фрагмент, где упомянут бренд.',\n  'Для всей пачки создай batch_summary: общий вывод, до 5 топ-тем и до 5 практических действий для команды бренда.',\n  batch.run_type === 'evening' ? 'Это второй запуск дня. batch_summary должен учитывать и текущие посты, и компактные записи утреннего запуска из EARLIER_MORNING_MENTIONS. Не придумывай отсутствующие данные.' : 'Это первый запуск дня. batch_summary относится к текущему утреннему окну.',\n  'Верни только валидный JSON без Markdown по схеме:',\n  '{\"analyses\":[{\"id\":\"точный id\",\"mandatory_filter_passed\":true,\"mandatory_filter_reason\":\"\",\"content_language\":\"russian|english|other|mixed\",\"contains_profanity\":false,\"geo_stop_detected\":false,\"social_spam_detected\":false,\"is_belarus_sber\":true,\"post_title\":\"заголовок\",\"sentiment\":\"negative|neutral|positive\",\"sentiment_score\":0,\"summary\":\"суть\",\"mention_quote\":\"фрагмент\",\"should_respond\":true,\"response_priority\":\"high|medium|low\",\"reaction_recommendation\":\"что делать и почему\",\"response_idea\":\"идея ответа\",\"comment_summary\":\"только по реальным данным\",\"risk\":\"репутационный риск или нет\",\"key_topics\":[\"темы\"]}],\"batch_summary\":{\"overview\":\"общий вывод\",\"top_topics\":[\"до 5\"],\"recommended_actions\":[\"до 5\"]}}',\n  'sentiment_score: от -100 до 100. Никаких фактов вне входных данных.',\n  'ВХОДНЫЕ ПОСТЫ:',\n  JSON.stringify(posts),\n  'EARLIER_MORNING_MENTIONS:',\n  JSON.stringify(earlierMentions),\n];\nreturn [{ json: { ...batch, day_key: dayKey, earlier_mentions: earlierMentions, agent_prompt: prompt.join('\\n') } }];\n"
+      },
+      "id": "7ca4c19f-4948-466e-b2c0-08460774a8ea",
+      "name": "04 · Задание AI-аналитику",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11744,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_prompt }}",
+        "options": {
+          "systemMessage": "Ты senior-аналитик репутации бренда и social listening по Беларуси. Анализируй тональность, репутационный риск и необходимость ответа. Используй только факты текущей пачки. Не выдумывай содержание комментариев, географию или метрики. Политика и 18+ запрещены. Возвращай только валидный JSON по схеме пользователя.",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false,
+          "autoSaveHighlightedData": false,
+          "enableStreaming": false
+        }
+      },
+      "id": "e35416fd-0813-480a-bb07-e01c28bf8e9e",
+      "name": "05 · AI Agent — анализ упоминаний",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        12000,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-flash",
+        "options": {}
+      },
+      "id": "c28f5b8b-adef-4002-a8d0-ab9682ea34ba",
+      "name": "DeepSeek Chat Model — анализ упоминаний",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        11984,
+        3024
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "7vKt5aSqzGtaiHwT",
+          "name": "DeepSeek DUKD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "brand_mentions_belarus_analysis",
+        "contextWindowLength": 3
+      },
+      "id": "d407af32-692c-402c-b7b7-e847c31c8fe0",
+      "name": "Simple Memory — brand listening",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        12240,
+        3024
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst agent = $input.first().json || {};\nconst batch = $('04 · Задание AI-аналитику').first().json;\nconst posts = batch.posts || [];\nconst raw = String(agent.output || agent.text || agent.response || '').trim();\nlet parsed = {};\ntry {\n  const firstBrace = raw.indexOf('{');\n  const lastBrace = raw.lastIndexOf('}');\n  parsed = JSON.parse(firstBrace >= 0 && lastBrace > firstBrace ? raw.slice(firstBrace, lastBrace + 1) : raw);\n} catch (_) { parsed = {}; }\nconst analyses = new Map((Array.isArray(parsed.analyses) ? parsed.analyses : []).map((value) => [String(value.id), value]));\nconst summary = parsed.batch_summary || {};\nconst esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst nl = (value) => esc(value).replace(/\\n/g, '<br>');\nconst fmt = (value) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(value) || 0));\nconst shorten = (value, limit) => String(value || '').length > limit ? String(value).slice(0, limit - 1) + '…' : String(value || '');\nconst localTime = (iso) => {\n  try { return new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); }\n  catch (_) { return String(iso || 'нет данных'); }\n};\nconst sentimentMeta = {\n  negative: { label: 'Негативно', icon: '🔴', color: '#d7263d', bg: '#fff1f3' },\n  neutral: { label: 'Нейтрально', icon: '⚪', color: '#667085', bg: '#f2f4f7' },\n  positive: { label: 'Позитивно', icon: '🟢', color: '#18864b', bg: '#edf7f0' },\n};\nconst baseUrl = 'https://newsaccount.app.n8n.cloud';\nconst secret = 'local-brand-mentions-agent';\nconst cards = [];\nconst state = $getWorkflowStaticData('global');\nstate.brandMentionSent = state.brandMentionSent || {};\nconst nowMs = Date.now();\n\nfor (const post of posts) {\n  const a = analyses.get(String(post.id));\n  if (!a) continue;\n  if (a.mandatory_filter_passed !== true) continue;\n  if (String(a.content_language || '').toLowerCase() !== 'russian') continue;\n  if (a.contains_profanity === true || a.geo_stop_detected === true || a.social_spam_detected === true) continue;\n  if (a.is_belarus_sber !== true) continue;\n  /* safety fallback disabled; AI must return a complete allowed analysis */\n  const unusedFallback = {\n    id: post.id, post_title: 'Упоминание ' + batch.brand, sentiment: 'neutral', sentiment_score: 0,\n    summary: shorten(post.text, 240), mention_quote: post.mention_matches, should_respond: false,\n    response_priority: 'low', reaction_recommendation: 'Проверить вручную: AI не вернул анализ.',\n    response_idea: 'Уточнить контекст и при необходимости помочь.',\n    comment_summary: post.comment_samples?.length ? post.comment_samples.join('; ') : 'Тексты комментариев недоступны; известно только количество ответов: ' + fmt(post.metrics?.replies),\n    risk: 'Требуется ручная проверка', key_topics: [],\n  };\n  void unusedFallback;\n  const sentiment = ['negative', 'neutral', 'positive'].includes(a.sentiment) ? a.sentiment : 'neutral';\n  const sm = sentimentMeta[sentiment];\n  const payloadData = {\n    v: 1, id: post.id, u: post.url, b: batch.brand, t: shorten(post.text, 420), au: post.author?.username,\n    h: shorten(a.post_title, 100), s: sentiment, sm: shorten(a.summary, 260), rr: shorten(a.reaction_recommendation, 260),\n    ri: shorten(a.response_idea, 280), ts: nowMs,\n  };\n  const payload = Buffer.from(JSON.stringify(payloadData), 'utf8').toString('base64url');\n  const actionUrl = baseUrl + '/webhook/brand-mention-ai-reply-v8?payload=' + encodeURIComponent(payload) + '&token=' + encodeURIComponent(secret);\n  // Telegram callback_data ограничен 64 байтами. Контекст агент возьмёт\n  // из самой информативной Telegram-карточки, поэтому здесь нужен короткий ID.\n  const callbackKey = Buffer.from(String(post.id), 'utf8').toString('base64url').slice(0, 44);\n  const telegramCallbackData = 'brand_reply:' + callbackKey;\n  const metrics = post.metrics || {};\n  const titleLink = post.url ? '<a href=\"' + esc(post.url) + '\" style=\"color:#17212b;text-decoration:underline\">' + esc(a.post_title) + '</a>' : esc(a.post_title);\n  const commentLabel = post.comment_samples?.length ? esc(a.comment_summary) : 'Тексты комментариев SocialCrawl для Threads не вернул. Доступно только количество ответов: <b>' + fmt(metrics.replies) + '</b>.';\n  const emailCard = [\n    '<div style=\"margin:18px 0;background:#fff;border:1px solid #dde3ea;border-left:7px solid ' + sm.color + ';border-radius:12px;overflow:hidden\">',\n    '<div style=\"padding:20px 22px;background:' + sm.bg + '\"><div style=\"font-size:13px;color:#667085\">' + sm.icon + ' ' + sm.label + ' · ' + esc(String(a.response_priority || 'low').toUpperCase()) + '</div>',\n    '<div style=\"font-size:21px;font-weight:700;margin-top:7px\">' + titleLink + '</div></div>',\n    '<div style=\"padding:20px 22px;line-height:1.55\">',\n    '<p><b>Автор:</b> @' + esc(post.author?.username) + ' · ' + esc(post.author?.name) + (post.author?.verified ? ' ✅' : '') + '<br>',\n    '<b>Опубликовано / время упоминания:</b> ' + esc(localTime(post.published_at)) + ' (Минск)<br>',\n    '<b>Подтверждение РБ:</b> ' + esc(post.belarus_evidence) + '<br>',\n    '<b>Где упомянут бренд:</b> “' + esc(a.mention_quote || post.mention_matches) + '”</p>',\n    '<p><b>📝 Сам пост пользователя:</b></p><div style=\"background:#f8fafc;padding:15px;border-radius:9px\">' + nl(shorten(post.text, 1000)) + '</div>',\n    '<table role=\"presentation\" style=\"width:100%;border-collapse:collapse;text-align:center;margin:16px 0\"><tr>',\n    '<td style=\"border:1px solid #e1e5ea;padding:10px\"><b>👁 ' + fmt(metrics.views) + '</b><br><span style=\"font-size:12px\">охват</span></td>',\n    '<td style=\"border:1px solid #e1e5ea;padding:10px\"><b>❤️ ' + fmt(metrics.likes) + '</b><br><span style=\"font-size:12px\">лайки</span></td>',\n    '<td style=\"border:1px solid #e1e5ea;padding:10px\"><b>💬 ' + fmt(metrics.replies) + '</b><br><span style=\"font-size:12px\">ответы</span></td>',\n    '<td style=\"border:1px solid #e1e5ea;padding:10px\"><b>🔁 ' + fmt(metrics.reposts) + '</b><br><span style=\"font-size:12px\">репосты</span></td>',\n    '</tr></table>',\n    '<p><b>Суть:</b> ' + esc(a.summary) + '<br><b>Риск:</b> ' + esc(a.risk) + '</p>',\n    '<div style=\"padding:14px;background:#f8fafc;border-radius:9px\"><b>Что пишут в комментариях:</b><br>' + commentLabel + '</div>',\n    '<p><b>Рекомендация:</b> ' + (a.should_respond ? '<span style=\"color:#b42318;font-weight:700\">РЕАГИРОВАТЬ</span>' : '<span style=\"color:#667085;font-weight:700\">НЕ РЕАГИРОВАТЬ</span>') + ' — ' + esc(a.reaction_recommendation) + '<br>',\n    '<b>Идея ответа:</b> ' + esc(a.response_idea) + '</p>',\n    '<table role=\"presentation\"><tr><td><a href=\"' + esc(actionUrl) + '\" style=\"display:inline-block;background:#246bfd;color:#fff;text-decoration:none;padding:13px 18px;border-radius:8px;font-weight:700\">✨ Подготовить AI-ответ</a></td></tr></table>',\n    '</div></div>',\n  ].join('');\n  const telegramTitle = post.url ? '<a href=\"' + esc(post.url) + '\">' + esc(a.post_title) + '</a>' : esc(a.post_title);\n  const tgLines = [\n    sm.icon + ' <b>' + telegramTitle + '</b>',\n    '<b>Бренд:</b> ' + esc(batch.brand),\n    '<b>Тональность:</b> ' + sm.label + ' (' + esc(a.sentiment_score) + ')',\n    '<b>Автор:</b> @' + esc(post.author?.username) + ' · ' + esc(post.author?.name),\n    '<b>Время упоминания:</b> ' + esc(localTime(post.published_at)) + ' (Минск)',\n    '<b>РБ:</b> ' + esc(post.belarus_evidence),\n    '',\n    '📝 <b>Сам пост пользователя:</b>',\n    '<blockquote>' + esc(shorten(post.text, 1000)) + '</blockquote>',\n    '',\n    '<b>Суть:</b> ' + esc(shorten(a.summary, 450)),\n    '👁 ' + fmt(metrics.views) + '  ❤️ ' + fmt(metrics.likes) + '  💬 ' + fmt(metrics.replies) + '  🔁 ' + fmt(metrics.reposts),\n    '<b>Комментарии:</b> ' + (post.comment_samples?.length ? esc(shorten(a.comment_summary, 450)) : 'тексты недоступны, ответов ' + fmt(metrics.replies)),\n    '',\n    '<b>' + (a.should_respond ? 'РЕАГИРОВАТЬ' : 'НЕ РЕАГИРОВАТЬ') + ':</b> ' + esc(shorten(a.reaction_recommendation, 450)),\n    '<b>Идея ответа:</b> ' + esc(shorten(a.response_idea, 450)),\n    post.url ? '<a href=\"' + esc(post.url) + '\">Открыть пост в Threads</a>' : '',\n  ].filter(Boolean).join('\\n');\n  cards.push({ post, analysis: a, sentiment, emailCard, telegram: { text: tgLines, keyboard: [[{ text: '✨ Подготовить AI-ответ', callback_data: telegramCallbackData }]] } });\n  state.brandMentionSent[post.id] = nowMs;\n}\n\nfor (const [id, sentAt] of Object.entries(state.brandMentionSent)) if (nowMs - Number(sentAt) > 14 * 24 * 3600000) delete state.brandMentionSent[id];\nconst counts = { negative: 0, neutral: 0, positive: 0 };\nlet totalReach = 0;\nlet mustRespond = 0;\nfor (const card of cards) {\n  counts[card.sentiment]++;\n  totalReach += Number(card.post.metrics?.views || 0);\n  if (card.analysis.should_respond) mustRespond++;\n}\nconst currentRecords = cards.map((card) => ({\n  id: card.post.id,\n  title: String(card.analysis.post_title || ''),\n  sentiment: card.sentiment,\n  should_respond: Boolean(card.analysis.should_respond),\n  summary: String(card.analysis.summary || ''),\n  key_topics: Array.isArray(card.analysis.key_topics) ? card.analysis.key_topics : [],\n  metrics: card.post.metrics || {},\n}));\nif (batch.run_type === 'morning') {\n  state.brandMentionMorning = { day_key: batch.day_key, records: currentRecords, saved_at: nowMs };\n}\nconst dailyRecords = batch.run_type === 'evening'\n  ? [...(Array.isArray(batch.earlier_mentions) ? batch.earlier_mentions : []), ...currentRecords]\n  : currentRecords;\nconst dailyCounts = { negative: 0, neutral: 0, positive: 0 };\nlet dailyReach = 0;\nlet dailyMustRespond = 0;\nfor (const record of dailyRecords) {\n  const tone = ['negative', 'neutral', 'positive'].includes(record.sentiment) ? record.sentiment : 'neutral';\n  dailyCounts[tone]++;\n  dailyReach += Number(record.metrics?.views || 0);\n  if (record.should_respond) dailyMustRespond++;\n}\nif (batch.run_type === 'evening' && state.brandMentionMorning?.day_key === batch.day_key) delete state.brandMentionMorning;\nconst period = localTime(batch.window_start_iso) + ' — ' + localTime(batch.window_end_iso);\nconst header = [\n  '<div style=\"background:#eef2f6;padding:24px;font-family:Arial,sans-serif;color:#17212b\"><div style=\"max-width:780px;margin:auto\">',\n  '<div style=\"background:#17212b;color:#fff;padding:24px;border-radius:14px\"><div style=\"font-size:13px;opacity:.75\">THREADS · БЕЛАРУСЬ · ' + esc(batch.run_label.toUpperCase()) + '</div>',\n  '<div style=\"font-size:28px;font-weight:700;margin-top:7px\">Лента упоминаний «' + esc(batch.brand) + '»</div>',\n  '<div style=\"margin-top:12px\">Период: ' + esc(period) + ' (Минск)</div>',\n  '<div style=\"margin-top:12px\">Всего: <b>' + cards.length + '</b> · 🔴 ' + counts.negative + ' · ⚪ ' + counts.neutral + ' · 🟢 ' + counts.positive + ' · Нужно реагировать: <b>' + mustRespond + '</b> · Охват: <b>' + fmt(totalReach) + '</b></div>',\n  '</div>',\n].join('');\nlet eveningSummary = '';\nif (batch.run_type === 'evening') {\n  const topics = Array.isArray(summary.top_topics) ? summary.top_topics : [];\n  const actions = Array.isArray(summary.recommended_actions) ? summary.recommended_actions : [];\n  eveningSummary = '<div style=\"margin:20px 0;background:#fff7e6;border:1px solid #f3c969;border-radius:12px;padding:20px\"><h2 style=\"margin-top:0\">Итог дня в 17:15</h2><p><b>За день:</b> ' + dailyRecords.length + ' упоминаний · охват ' + fmt(dailyReach) + ' · 🔴 ' + dailyCounts.negative + ' · ⚪ ' + dailyCounts.neutral + ' · 🟢 ' + dailyCounts.positive + ' · реагировать ' + dailyMustRespond + '</p><p>' + esc(summary.overview || 'Сводка сформирована по утренним и вечерним упоминаниям.') + '</p><b>Топ тем:</b><ol>' + topics.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol><b>Рекомендованные действия:</b><ol>' + actions.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol></div>';\n}\nconst emailHtml = header + eveningSummary + cards.map((x) => x.emailCard).join('') + '<div style=\"font-size:12px;color:#667085;margin-top:20px\">Тексты комментариев показываются только если источник реально вернул их. Workflow ничего не придумывает.</div></div></div>';\nconst telegramMessages = [{\n  text: '<b>Лента упоминаний «' + esc(batch.brand) + '» · ' + esc(batch.run_label) + '</b>\\nПериод: ' + esc(period) + '\\nНайдено: <b>' + cards.length + '</b> · 🔴 ' + counts.negative + ' · ⚪ ' + counts.neutral + ' · 🟢 ' + counts.positive + '\\nОхват: <b>' + fmt(totalReach) + '</b> · Реагировать: <b>' + mustRespond + '</b>',\n  keyboard: [],\n}];\nif (batch.run_type === 'evening') {\n  telegramMessages.push({\n    text: '<b>Итог дня</b>\\nЗа день: <b>' + dailyRecords.length + '</b> упоминаний · охват <b>' + fmt(dailyReach) + '</b>\\n🔴 ' + dailyCounts.negative + ' · ⚪ ' + dailyCounts.neutral + ' · 🟢 ' + dailyCounts.positive + ' · реагировать ' + dailyMustRespond + '\\n\\n' + esc(shorten(summary.overview || 'Сводка по утренним и вечерним упоминаниям.', 1000)) + '\\n\\n<b>Топ тем:</b>\\n' + (summary.top_topics || []).slice(0, 5).map((x, i) => (i + 1) + '. ' + esc(shorten(x, 220))).join('\\n') + '\\n\\n<b>Что сделать:</b>\\n' + (summary.recommended_actions || []).slice(0, 5).map((x, i) => (i + 1) + '. ' + esc(shorten(x, 220))).join('\\n'),\n    keyboard: [],\n  });\n}\ntelegramMessages.push(...cards.map((x) => x.telegram));\nreturn [{ json: {\n  email_subject: batch.brand + ' · ' + cards.length + ' упоминаний · ' + batch.run_label,\n  email_html: emailHtml,\n  telegram_messages: telegramMessages,\n  posts_count: cards.length,\n  counts,\n  total_reach: totalReach,\n  must_respond: mustRespond,\n} }];\n"
+      },
+      "id": "651581e7-0b7b-4ceb-b9a8-8a3c2fc611f8",
+      "name": "06 · Красивые Email + Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12288,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "Brand Radar <pjstar199@gmail.com>",
+        "toEmail": "={{ [\n  'kolia20yandexru@gmail.com',\n].join(', ') }}",
+        "subject": "={{ $json.email_subject }}",
+        "html": "={{ $json.email_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0997d261-fd86-4bad-beb2-32451958912a",
+      "name": "07 · Gmail — лента упоминаний",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        12560,
+        2672
+      ],
+      "webhookId": "912b946e-5b2b-4b04-b0df-c0117d4b4db4",
+      "credentials": {
+        "smtp": {
+          "id": "VcmbIedir5HHr16D",
+          "name": "SMTP account for threads"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ВСТАВЬ ТОКЕН БОТА. chat_id уже указан.\n// 1) Токен выдал @BotFather.\n// 2) Чтобы узнать chat_id: напиши боту /start, затем открой\n//    https://api.telegram.org/bot<ТОКЕН>/getUpdates и возьми message.chat.id.\n\nconst TELEGRAM_BOT_TOKEN = '8898358174:AAEf2t20QrofUpNsVGw8QbrYkdjsOzcNUPo';\n\nconst TELEGRAM_CHAT_ID = [\n  '833303841',\n];\n\n// Если настройки не заполнены, Telegram-ветка молча пропускается,\n// а Email-ветка продолжает работать.\nconst token = String(TELEGRAM_BOT_TOKEN || '').trim();\n\nconst chatIds = [\n  ...new Set(\n    TELEGRAM_CHAT_ID\n      .map((id) => String(id || '').trim())\n      .filter((id) => id && !id.startsWith('PASTE_'))\n  ),\n];\n\nif (!token || token.startsWith('PASTE_') || chatIds.length === 0) {\n  return [];\n}\n\nconst messages = $input.first()?.json?.telegram_messages || [];\n\nconst output = [];\n\nfor (const chatId of chatIds) {\n  for (const message of messages) {\n    output.push({\n      json: {\n        telegram_bot_token: token,\n        telegram_chat_id: chatId,\n        telegram_text: message.text,\n        telegram_keyboard: message.keyboard || null,\n      },\n    });\n  }\n}\n\nreturn output;"
+      },
+      "id": "28fb878d-c54d-418e-bc9f-c6289bb00062",
+      "name": "10 · Telegram — настройки",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12544,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { chat_id: $json.telegram_chat_id, text: $json.telegram_text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: $json.telegram_keyboard } } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "9456a075-5771-4ef5-80f5-a9d2d8997cb8",
+      "name": "11 · Telegram — отправить ленту",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        12816,
+        2896
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Запусти эту ветку один раз после публикации workflow.\n\nconst TELEGRAM_BOT_TOKEN = '8898358174:AAEf2t20QrofUpNsVGw8QbrYkdjsOzcNUPo';\nconst N8N_PUBLIC_BASE_URL = 'https://newsaccount.app.n8n.cloud';\nconst WEBHOOK_PATH = 'threads-telegram-callback-v9';\n\nconst botToken = TELEGRAM_BOT_TOKEN.trim();\nconst baseUrl = N8N_PUBLIC_BASE_URL.trim().replace(/\\/+$/, '');\n\nif (!botToken || botToken.startsWith('PASTE_')) {\n  throw new Error('Вставь новый Telegram bot token.');\n}\n\nif (!baseUrl.startsWith('https://')) {\n  throw new Error('Укажи публичный HTTPS-адрес n8n.');\n}\n\nreturn [\n  {\n    json: {\n      telegram_bot_token: botToken,\n      telegram_webhook_url:\n        `${baseUrl}/webhook/${WEBHOOK_PATH}`,\n    },\n  },\n];"
+      },
+      "id": "79aa333e-4933-40de-93e3-956fd236999f",
+      "name": "91 · Настройки setWebhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8768,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/setWebhook' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { url: $json.telegram_webhook_url, allowed_updates: ['callback_query'], drop_pending_updates: false } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "dfba849a-64c6-42f7-8348-718dc0a4c66c",
+      "name": "92 · Telegram — setWebhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        9024,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 23 * * 0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        7712,
+        5632
+      ],
+      "id": "7cf05061-2b0c-4fd2-8f07-b0325c46f29c",
+      "name": "00B · Воскресенье 23:55 — очистить дедупликацию1"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "49Nt2OxPioQaaQWE",
+          "mode": "list",
+          "cachedResultName": "task2_sber_mentions_prod",
+          "cachedResultUrl": "/projects/9hwtFM6S1qlPcgbn/datatables/49Nt2OxPioQaaQWE"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "post_id",
+              "condition": "isNotEmpty"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        7952,
+        5632
+      ],
+      "id": "e8187e45-8585-4c45-8ba6-d6393805de2a",
+      "name": "00C · Data Table — удалить все строки недели1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n//                    ГЛАВНЫЙ КОНФИГ ЗАДАЧИ 2\n//          Все рабочие переключатели находятся только в этом узле.\n// ============================================================================\n\n// false — искать только прямые упоминания Сбера в тексте постов.\n// true  — дополнительно искать банковские посты и читать их комментарии.\n// ВАЖНО: включение добавляет запрос «банк» и до MAX_COMMENT_CANDIDATES_PER_RUN\n// платных запросов /v1/threads/post/comments за один запуск.\nconst ENABLE_COMMENT_SEARCH = false;\n\n// true — после решения LLM получить полную карточку только финальных постов.\n// Нужна для уточнения просмотров и метрик. Один финальный пост = до 1 кредита.\nconst FETCH_FINAL_POST_DETAILS = true;\n\n// Основные бесплатные фильтры внутри n8n.\nconst USE_DATE_FILTER = true;\nconst USE_RU_FILTER = true;\nconst USE_SAFETY_FILTER = true;\n\n// Строгие обязательные фильтры задачи 2.\n// Все они выполняются до комментариев, полной карточки и рассылки.\nconst STRICT_RUSSIAN_ONLY = true;          // false — разрешить нерусские посты\nconst REJECT_PROFANITY = true;             // false — не блокировать мат локально\nconst GEO_STOP_ENABLED = true;             // ИИ блокирует посты о рынке РФ/Казахстана; случайные упоминания стран разрешены\nconst REJECT_SOCIAL_SPAM = true;           // знакомства, CTA в комментарии/подписку\nconst REQUIRE_CONFIRMED_SBER_BELARUS = false; // ИИ обязан подтвердить именно Сбер РБ\n\nconst LANGUAGE_FILTER = {\n  enabled: STRICT_RUSSIAN_ONLY,\n  minRussianLetters: 5,\n  minRussianShare: 0.70,\n  maxLatinShare: 0.30,\n  rejectForeignCyrillic: true,\n};\n\n// Россия/Казахстан, валюты, города и флаги со скриншота.\nconst GEO_STOP_PATTERN = '(?:^|[^\\\\p{L}\\\\p{N}_])(?:росси\\\\p{L}*|russia\\\\p{L}*|russian\\\\p{L}*|рф|казахстан\\\\p{L}*|kazakhstan\\\\p{L}*|kz|rub|тенге\\\\p{L}*|алмат\\\\p{L}*|almaty|астан\\\\p{L}*|astana|москв\\\\p{L}*|moscow|санкт[\\\\s-]*петербург\\\\p{L}*|saint[\\\\s-]*petersburg|st[.\\\\s-]*petersburg|питер\\\\p{L}*|новосибирск\\\\p{L}*|novosibirsk|екатеринбург\\\\p{L}*|yekaterinburg|краснодар\\\\p{L}*|krasnodar|владивосток\\\\p{L}*|vladivostok)(?=$|[^\\\\p{L}\\\\p{N}_])|🇷🇺|🇰🇿';\n\n// Русская и английская нецензурная лексика.\nconst PROFANITY_PATTERN = '(?:^|[^\\\\p{L}])(?:[хx][уy][йеяию\\\\p{L}]*|п[ие]зд\\\\p{L}*|бл(?:я|еа)(?:д|т)?\\\\p{L}*|(?:е|ё|e)б(?:а|у|и|ё|н|л|т|ы)\\\\p{L}*|муд(?:ак|ил)\\\\p{L}*|долбо(?:е|ё)б\\\\p{L}*|сук(?:а|и|у|ой)\\\\p{L}*|fuck\\\\p{L}*|shit\\\\p{L}*|bitch\\\\p{L}*|asshole\\\\p{L}*|motherfuck\\\\p{L}*|cunt\\\\p{L}*)(?=$|[^\\\\p{L}])';\n\n// Спам-знакомства, просьбы писать в комментариях и подписываться.\n// «Подписка СберПрайм» не блокируется.\nconst SOCIAL_SPAM_PATTERN = '(?:ветк\\\\p{L}*\\\\s+знакомств\\\\p{L}*|давайте\\\\s+знакомиться|давай\\\\s+познакомимся|ищу\\\\s+(?:парня|девушку|знакомства)|пишит\\\\p{L}*\\\\s+в\\\\s+комментари\\\\p{L}*|напишит\\\\p{L}*\\\\s+в\\\\s+комментари\\\\p{L}*|подпишит\\\\p{L}*\\\\s+на\\\\s+(?:меня|аккаунт|профиль)|подписывайт\\\\p{L}*|взаимн\\\\p{L}*\\\\s+подписк\\\\p{L}*|подписка\\\\s+на\\\\s+(?:меня|аккаунт|профиль))';\n\nconst ADDITIONAL_STOP_NAMES = [\n  'пост относится к рынку России или Казахстана (случайное упоминание страны не является стопом)',\n  'нецензурная лексика',\n  'ветки знакомств и предложения познакомиться',\n  'призывы писать в комментариях или подписываться',\n  'нерусский язык',\n  'упоминание не относится к Сбер Банку Беларусь',\n];\n\n// Запрещённые темы. Локальный фильтр отсекает явные формулировки,\n// а DeepSeek повторно проверяет смысл, синонимы и скрытый контекст.\nconst STOP_TOPIC_NAMES = [\n  'политика',\n  'критика государственных институтов и органов власти',\n  'межнациональные конфликты',\n  'конфликты',\n  'аборты',\n  'эвтаназия',\n  'религия',\n  'секс',\n  'цензура',\n  'отношения мужчины и женщины',\n  'домашнее насилие',\n  'излишне откровенные обсуждения физиологии и интимных подробностей',\n  'пропаганда чайлдфри',\n  'вопросы гендерного равенства',\n  'эйджизм',\n  'дискриминация',\n  'расизм',\n  'атрибуты запрещённых субкультур',\n  'национализм',\n  'нацизм',\n  'наркотические вещества',\n  'оружие',\n  'суицид',\n  // Ранее действовавшие ограничения flow сохраняются:\n  '18+ и порнографический или эротический контент',\n  'проституция и эскорт',\n  'азартные игры и букмекерство',\n  'военные действия, санкции, митинги и протесты',\n];\n\n\n// Управляет постами, для которых LLM не смогла подтвердить рынок и вернула\n// brand_market = \"uncertain\" (условно: вероятность Беларусь/Россия 50 на 50).\n// true  — отправлять такой пост с заметной пометкой «регион не подтверждён».\n// false — не сохранять и не отправлять такой пост в Telegram и Gmail.\n// Подтверждённая Россия при USE_RU_FILTER = true не проходит в любом случае.\nconst SEND_UNCONFIRMED_REGION = true;\n\n// Не считать посты и ответы самого банка пользовательскими упоминаниями.\n// Сравнение выполняется по username целиком, без поиска подстроки.\nconst IGNORE_OFFICIAL_AUTHORS = true;\nconst OFFICIAL_BRAND_HANDLES = [\n  'sber',\n  'sberbank',\n  'sberbankby',\n  'sberbank_by',\n  'bps_sberbank',\n];\n\n// Прямой поиск упоминаний. Каждый элемент — отдельный Search-запрос.\nconst DIRECT_SEARCH_QUERIES = [\n  'Сбер',\n  'Sber',\n];\n\n// Используется только когда ENABLE_COMMENT_SEARCH=true.\nconst COMMENT_SEARCH_QUERIES = ['банк'];\n\n// Лимиты выдачи. Для комментариев специально оставлен небольшой лимит.\n// 20 обычно укладывается в одно поисковое окно SocialCrawl.\n// Больший limit может заставить API пройти несколько окон и списать больше кредитов.\n// Максимальное количество результатов для каждого прямого поискового запроса\n// SocialCrawl: «Сбер» и «Sber».\n// Большое значение может заставить SocialCrawl загрузить несколько страниц\n// результатов и потратить больше кредитов.\nconst DIRECT_SEARCH_LIMIT = 100;\n\n// Максимальное количество банковских постов из широкого поиска «банк».\n// Используется только при ENABLE_COMMENT_SEARCH = true.\nconst COMMENT_SEARCH_LIMIT = 20;\n\n// Максимальное количество постов за один запуск, для которых разрешено\n// отдельно запросить комментарии через SocialCrawl.\n// Ограничивает количество платных запросов к /threads/post/comments.\n// Используется только при ENABLE_COMMENT_SEARCH = true.\nconst MAX_COMMENT_CANDIDATES_PER_RUN = 30;\n\n// Максимальное количество постов, которые LLM может окончательно выбрать\n// за один запуск. Только эти посты дополнительно обогащаются метриками,\n// сохраняются в таблицу и отправляются в Telegram и Gmail.\nconst MAX_FINAL_POSTS_PER_RUN = 300;\n\nconst BRAND = 'Сбер Банк (Беларусь)';\nconst BRAND_ALIASES = [\n  'Сбер', 'Сбербанк', 'Сбер Банк', 'Сбер-Банк',\n  'Сбербанк Беларусь', 'Сбер Банк Беларусь', 'Сбербанк РБ',\n  'ОАО \"Сбер Банк\"',\n  'Sber', 'Sberbank', 'Sber Bank', 'Sber-Bank',\n  'Sberbank Belarus', 'Sberbank RB',\n  'БПС', 'БПС-Сбербанк', 'БПС Сбербанк', 'БПС-Банк',\n  'БПС Банк', 'Белпромстройбанк', 'ЗАО \"БПС-Сбербанк\"',\n  'BPS', 'BPS-Sberbank', 'BPS Sberbank', 'BPS-Bank', 'BPS Bank',\n  '@sberbankby', 'sberbankby', 'sberbank_by', 'sberbank.by',\n  'sber-bank.by', 'bps-sberbank.by', '@bps_sberbank',\n];\n\nconst MINUTE = 60 * 1000;\nconst MINSK_OFFSET = 3 * 60 * MINUTE;\nconst now = new Date();\nconst localNow = new Date(now.getTime() + MINSK_OFFSET);\nconst year = localNow.getUTCFullYear();\nconst month = localNow.getUTCMonth();\nconst day = localNow.getUTCDate();\nconst hour = localNow.getUTCHours();\n\nconst toUtc = (yy, mm, dd, hh, mi, ss) =>\n  new Date(Date.UTC(yy, mm, dd, hh, mi, ss) - MINSK_OFFSET);\n\nconst localDate = (date) => {\n  const shifted = new Date(date.getTime() + MINSK_OFFSET);\n  const pad = (value) => String(value).padStart(2, '0');\n  return shifted.getUTCFullYear()\n    + '-' + pad(shifted.getUTCMonth() + 1)\n    + '-' + pad(shifted.getUTCDate());\n};\n\n// Двухминутный нахлёст удаляется по post_id до платного обогащения.\nconst isMorning = hour < 15;\nconst windowStart = isMorning\n  ? toUtc(year, month, day - 1, 17, 14, 0)\n  : toUtc(year, month, day, 12, 59, 0);\nconst requestedEnd = isMorning\n  ? toUtc(year, month, day, 13, 0, 59)\n  : toUtc(year, month, day, 17, 15, 59);\nconst windowEnd = new Date(Math.min(requestedEnd.getTime(), now.getTime()));\n\nreturn [{\n  json: {\n    enable_comment_search: ENABLE_COMMENT_SEARCH,\n    fetch_final_post_details: FETCH_FINAL_POST_DETAILS,\n    use_date_filter: USE_DATE_FILTER,\n    use_ru_filter: USE_RU_FILTER,\n    send_unconfirmed_region: SEND_UNCONFIRMED_REGION,\n    use_safety_filter: USE_SAFETY_FILTER,\n    stop_topic_names: STOP_TOPIC_NAMES,\n    additional_stop_names: ADDITIONAL_STOP_NAMES,\n    strict_russian_only: STRICT_RUSSIAN_ONLY,\n    reject_profanity: REJECT_PROFANITY,\n    geo_stop_enabled: GEO_STOP_ENABLED,\n    reject_social_spam: REJECT_SOCIAL_SPAM,\n    require_confirmed_sber_belarus: REQUIRE_CONFIRMED_SBER_BELARUS,\n    language_filter: LANGUAGE_FILTER,\n    geo_stop_pattern: GEO_STOP_PATTERN,\n    profanity_pattern: PROFANITY_PATTERN,\n    social_spam_pattern: SOCIAL_SPAM_PATTERN,\n    ignore_official_authors: IGNORE_OFFICIAL_AUTHORS,\n    official_brand_handles: OFFICIAL_BRAND_HANDLES,\n    direct_search_queries: DIRECT_SEARCH_QUERIES,\n    comment_search_queries: COMMENT_SEARCH_QUERIES,\n    direct_search_limit: DIRECT_SEARCH_LIMIT,\n    comment_search_limit: COMMENT_SEARCH_LIMIT,\n    max_comment_candidates_per_run: MAX_COMMENT_CANDIDATES_PER_RUN,\n    max_final_posts_per_run: MAX_FINAL_POSTS_PER_RUN,\n    brand: BRAND,\n    brand_aliases: BRAND_ALIASES,\n    run_type: isMorning ? 'morning' : 'evening',\n    run_label: isMorning ? 'Утро' : 'Вечер',\n    window_start_iso: windowStart.toISOString(),\n    window_end_iso: windowEnd.toISOString(),\n    window_end_requested_iso: requestedEnd.toISOString(),\n    api_start_date: localDate(windowStart),\n    api_end_date: localDate(windowEnd),\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8352,
+        4336
+      ],
+      "id": "f14cd2eb-b920-40b7-90f9-ea2d3991bef7",
+      "name": "01 · ГЛАВНЫЙ КОНФИГ · переключатели"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $input.first().json || {};\nconst requests = [];\n\nfor (const query of cfg.direct_search_queries || []) {\n  requests.push({\n    ...cfg,\n    search_query: String(query),\n    search_query_type: 'direct',\n    search_limit: Number(cfg.direct_search_limit || 50),\n  });\n}\n\nif (cfg.enable_comment_search) {\n  for (const query of cfg.comment_search_queries || []) {\n    requests.push({\n      ...cfg,\n      search_query: String(query),\n      search_query_type: 'comment_discovery',\n      search_limit: Number(cfg.comment_search_limit || 10),\n    });\n  }\n}\n\nif (!requests.length) {\n  throw new Error('В главном конфиге не указано ни одного поискового запроса.');\n}\n\nreturn requests.map((json) => ({ json }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8592,
+        4336
+      ],
+      "id": "f739e4d9-5231-471d-83a7-e370bc6ede21",
+      "name": "01A · Подготовить поисковые запросы"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('01 · ГЛАВНЫЙ КОНФИГ · переключатели').first().json || {};\nconst requestItems = $('01A · Подготовить поисковые запросы').all();\nconst responses = $input.all();\nconst startMs = Date.parse(cfg.window_start_iso);\nconst endMs = Date.parse(cfg.window_end_iso);\n\nconst first = (...values) => values.find(\n  (value) => value !== undefined && value !== null && value !== ''\n);\nconst num = (...values) => {\n  const parsed = Number(first(...values));\n  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;\n};\nconst nullableNum = (...values) => {\n  const value = first(...values);\n  if (value === undefined || value === null || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;\n};\nconst textOf = (value) => typeof value === 'string'\n  ? value\n  : value ? JSON.stringify(value) : '';\nconst escRe = (value) => String(value).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst aliases = (cfg.brand_aliases || [])\n  .map((value) => escRe(String(value).replace(/^@/, '')))\n  .sort((a, b) => b.length - a.length)\n  .join('|');\nconst mention = new RegExp(\n  '(?:^|[^\\\\p{L}\\\\p{N}_])@?(?:' + aliases\n    + ')(?:а|у|ом|е|ы|и|ов|ами|ах)?(?=$|[^\\\\p{L}\\\\p{N}_])',\n  'iu'\n);\n\nconst cleanFilterText = (value) => String(value || '')\n  .replace(/https?:\\/\\/\\S+/giu, ' ')\n  .replace(/www\\.\\S+/giu, ' ')\n  .replace(/@[\\p{L}\\p{N}_.]+/gu, ' ')\n  .replace(/#[\\p{L}\\p{N}_]+/gu, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst isRussianText = (value) => {\n  const filter = cfg.language_filter || {};\n  if (!filter.enabled) return true;\n  const source = cleanFilterText(value);\n  const letters = source.match(/\\p{L}/gu) || [];\n  if (!letters.length) return false;\n  const russianCount = (source.match(/[А-Яа-яЁё]/g) || []).length;\n  const latinCount = (source.match(/[A-Za-z]/g) || []).length;\n  const foreignCyrillicCount = (source.match(/[ІіЇїЄєҐґЎў]/g) || []).length;\n  return russianCount >= Number(filter.minRussianLetters || 5)\n    && russianCount / letters.length >= Number(filter.minRussianShare || 0.70)\n    && latinCount / letters.length <= Number(filter.maxLatinShare || 0.30)\n    && (!filter.rejectForeignCyrillic || foreignCyrillicCount === 0);\n};\n\nconst geoStop = new RegExp(cfg.geo_stop_pattern || '(?!)', 'iu');\nconst profanityStop = new RegExp(cfg.profanity_pattern || '(?!)', 'iu');\nconst socialSpamStop = new RegExp(cfg.social_spam_pattern || '(?!)', 'iu');\n\nconst bankContext = /(?:\\bбанк(?:а|е|и|ом|у|ов|ами|ах)?\\b|банковск|мобил(?:ьн(?:ый|ого))?\\s+банк|интернет[\\s-]*банк|банкомат|карт(?:а|ы|е|ой|у)|кредит|вклад|депозит|ипотек|перевод|плат[её]ж|кэшбэк|кешбэк|рассрочк)/iu;\nconst STOP_TOPIC_RULES = [\n  { topic: 'политика', pattern: /(?:политик\\p{L}*|politic\\p{L}*)/iu },\n  {\n    topic: 'критика государственных институтов и органов власти',\n    pattern: /(?:(?:критик\\p{L}*|обвин\\p{L}*|руг\\p{L}*|недовол\\p{L}*|возмущ\\p{L}*)[\\s\\S]{0,100}(?:государств\\p{L}*|госорган\\p{L}*|орган\\p{L}*\\s+власт\\p{L}*|власт\\p{L}*|правительств\\p{L}*|министерств\\p{L}*|ведомств\\p{L}*|парламент\\p{L}*|президент\\p{L}*)|(?:государств\\p{L}*|госорган\\p{L}*|орган\\p{L}*\\s+власт\\p{L}*|власт\\p{L}*|правительств\\p{L}*|министерств\\p{L}*|ведомств\\p{L}*|парламент\\p{L}*|президент\\p{L}*)[\\s\\S]{0,100}(?:критик\\p{L}*|обвин\\p{L}*|руг\\p{L}*|недовол\\p{L}*|возмущ\\p{L}*))/iu,\n  },\n  { topic: 'межнациональные конфликты', pattern: /(?:межнациональн\\p{L}*|межэтническ\\p{L}*|этническ\\p{L}*\\s+конфликт\\p{L}*)/iu },\n  { topic: 'конфликты', pattern: /(?:конфликт\\p{L}*|противостояни\\p{L}*)/iu },\n  { topic: 'аборты', pattern: /(?:аборт\\p{L}*|прерыван\\p{L}*\\s+беременн\\p{L}*)/iu },\n  { topic: 'эвтаназия', pattern: /(?:эвтанази\\p{L}*|euthanasi\\p{L}*)/iu },\n  { topic: 'религия', pattern: /(?:религи\\p{L}*|церков\\p{L}*|православ\\p{L}*|христиан\\p{L}*|католиц\\p{L}*|ислам\\p{L}*|мусульман\\p{L}*|иудаизм\\p{L}*|атеизм\\p{L}*|аллах\\p{L}*|господ\\p{L}*|(?:^|[^\\p{L}])бог(?:а|у|ом|е|и)?(?=$|[^\\p{L}]))/iu },\n  { topic: 'секс', pattern: /(?:секс\\p{L}*|sexual\\p{L}*)/iu },\n  { topic: 'цензура', pattern: /(?:цензур\\p{L}*|censorship\\p{L}*)/iu },\n  { topic: 'отношения мужчины и женщины', pattern: /(?:(?:отношени\\p{L}*|взаимоотношени\\p{L}*)[\\s\\S]{0,80}(?:мужчин\\p{L}*|парн\\p{L}*)[\\s\\S]{0,80}(?:женщин\\p{L}*|девуш\\p{L}*)|(?:отношени\\p{L}*|взаимоотношени\\p{L}*)[\\s\\S]{0,80}(?:женщин\\p{L}*|девуш\\p{L}*)[\\s\\S]{0,80}(?:мужчин\\p{L}*|парн\\p{L}*))/iu },\n  { topic: 'домашнее насилие', pattern: /(?:домашн\\p{L}*\\s+насили\\p{L}*|семейн\\p{L}*\\s+насили\\p{L}*|абьюз\\p{L}*)/iu },\n  { topic: 'излишне откровенные обсуждения физиологии и интимных подробностей', pattern: /(?:интимн\\p{L}*\\s+подробност\\p{L}*|половы\\p{L}*\\s+орган\\p{L}*|менструац\\p{L}*|эякуляц\\p{L}*|дефекац\\p{L}*|откровенн\\p{L}*[\\s\\S]{0,50}физиологи\\p{L}*)/iu },\n  { topic: 'пропаганда чайлдфри', pattern: /(?:чайлдфри\\p{L}*|childfree\\p{L}*|пропаганд\\p{L}*[\\s\\S]{0,60}(?:бездетн\\p{L}*|отказ\\p{L}*\\s+от\\s+дет\\p{L}*))/iu },\n  { topic: 'вопросы гендерного равенства', pattern: /(?:гендерн\\p{L}*\\s+равенств\\p{L}*|гендерн\\p{L}*\\s+неравенств\\p{L}*|gender\\s+equality)/iu },\n  { topic: 'эйджизм', pattern: /(?:эйджизм\\p{L}*|ageism\\p{L}*|дискриминаци\\p{L}*\\s+по\\s+возраст\\p{L}*)/iu },\n  { topic: 'дискриминация', pattern: /(?:дискриминаци\\p{L}*|discrimination\\p{L}*)/iu },\n  { topic: 'расизм', pattern: /(?:расизм\\p{L}*|расист\\p{L}*|racism\\p{L}*)/iu },\n  { topic: 'атрибуты запрещённых субкультур', pattern: /(?:запрещ[её]нн\\p{L}*\\s+субкультур\\p{L}*|экстремистск\\p{L}*\\s+символик\\p{L}*|свастик\\p{L}*)/iu },\n  { topic: 'национализм', pattern: /(?:национализм\\p{L}*|националист\\p{L}*|nationalism\\p{L}*)/iu },\n  { topic: 'нацизм', pattern: /(?:нацизм\\p{L}*|нацист\\p{L}*|неонаци\\p{L}*|nazism\\p{L}*)/iu },\n  { topic: 'наркотические вещества', pattern: /(?:наркот\\p{L}*|кокаин\\p{L}*|героин\\p{L}*|метамфетамин\\p{L}*|марихуан\\p{L}*|каннабис\\p{L}*)/iu },\n  { topic: 'оружие', pattern: /(?:оружи\\p{L}*|пистолет\\p{L}*|винтовк\\p{L}*|боеприпас\\p{L}*|огнестрельн\\p{L}*)/iu },\n  { topic: 'суицид', pattern: /(?:суицид\\p{L}*|самоубийств\\p{L}*|поконч\\p{L}*\\s+с\\s+собой)/iu },\n  { topic: '18+ и порнографический или эротический контент', pattern: /(?:18\\s*\\+|порн\\p{L}*|эрот\\p{L}*|onlyfans)/iu },\n  { topic: 'проституция и эскорт', pattern: /(?:эскорт\\p{L}*|проститу\\p{L}*)/iu },\n  { topic: 'азартные игры и букмекерство', pattern: /(?:казино\\p{L}*|букмекер\\p{L}*)/iu },\n  { topic: 'военные действия, санкции, митинги и протесты', pattern: /(?:санкци\\p{L}*|военн\\p{L}*\\s+(?:действ\\p{L}*|операци\\p{L}*|конфликт\\p{L}*)|обстрел\\p{L}*|ракет\\p{L}*[\\s-]*(?:удар\\p{L}*|обстрел\\p{L}*|атак\\p{L}*)|фронт\\p{L}*|оккупаци\\p{L}*|бомбардировк\\p{L}*|боев\\p{L}*[\\s-]*(?:действ\\p{L}*|столкновени\\p{L}*)|оппозици\\p{L}*|митинг\\p{L}*|протест\\p{L}*)/iu },\n];\nconst detectStopTopic = (value) => {\n  const source = String(value || '').replace(/\\s+/g, ' ').trim();\n  for (const rule of STOP_TOPIC_RULES) {\n    if (rule.pattern.test(source)) return rule.topic;\n  }\n  return '';\n};\nconst rb = /(?:беларус|белорус|беларуск|belarus|\\bby\\b|\\bbyn\\b|минск|minsk|гомел|gomel|homiel|брест|brest|витебск|vitebsk|могил[её]в|mogilev|гродно|grodno|hrodna|бобруйск|баранович|полоцк|новополоцк|солигорск|жодино|лида|пинск|мозыр|орша|борисов|молодечно|\\bрб\\b|бел\\.?\\s*руб|\\+375)/iu;\nconst rbBrand = /(?:@?sberbankby\\b|sber-bank\\.by|бпс[\\s-]*сбербанк|оао\\s*[«\"']?сбер\\s*банк)/iu;\nconst fundraisingSignal = /(?:пожертв|благотвор|сбор\\s+(?:денег|средств|на)|донат|помогите|нужна\\s+помощь|материальн(?:ая|ой)\\s+помощ|скиньте|переведите|поддержать\\s+(?:деньгами|рубл)|на\\s+лечени|номер\\s+карт|реквизит|карта\\s+сбер|на\\s+сбер|сбер\\s*[:—-]?\\s*\\d{4,})/iu;\n\nconst listOf = (body) => Array.isArray(body?.data?.items) ? body.data.items\n  : Array.isArray(body?.items) ? body.items\n  : Array.isArray(body?.data?.posts) ? body.data.posts\n  : Array.isArray(body?.posts) ? body.posts\n  : Array.isArray(body?.results) ? body.results\n  : Array.isArray(body?.data) ? body.data : [];\n\nconst diagnostics = {\n  search_requests: responses.length,\n  search_credits_used: 0,\n  search_returned_items: 0,\n  unique_before_filters: 0,\n  rejected_no_text_or_url: 0,\n  rejected_official_author: 0,\n  rejected_no_direct_or_bank_context: 0,\n  rejected_time: 0,\n  rejected_safety: 0,\n  rejected_non_russian: 0,\n  rejected_profanity: 0,\n  rejected_social_spam: 0,\n  rejected_geo_stop: 0,\n  rejected_language_details: [],\n  rejected_profanity_details: [],\n  rejected_social_spam_details: [],\n  rejected_geo_stop_details: [],\n  allowed_belarus_bank_russia_reference: 0,\n  allowed_belarus_bank_russia_reference_details: [],\n  passed_geo_mentions_to_ai: 0,\n  passed_geo_mentions_to_ai_details: [],\n  rejected_stop_topic_details: [],\n  rejected_russia: 0,\n  accepted_direct: 0,\n  accepted_comment_candidates: 0,\n  comment_candidates_capped: 0,\n  search_by_query: [],\n};\n\nconst unique = new Map();\nfor (let index = 0; index < responses.length; index++) {\n  const body = responses[index].json || {};\n  const request = requestItems[index]?.json || {};\n  const rows = listOf(body);\n  diagnostics.search_credits_used += Number(body.credits_used || 0);\n  diagnostics.search_returned_items += rows.length;\n  diagnostics.search_by_query.push({\n    query: request.search_query || ('query_' + (index + 1)),\n    type: request.search_query_type || 'direct',\n    returned: rows.length,\n    credits_used: Number(body.credits_used || 0),\n    cached: body.cached === true,\n    request_id: String(body.request_id || ''),\n  });\n\n  for (const wrapper of rows) {\n    const post = wrapper?.post || wrapper;\n    const id = String(first(\n      post?.id,\n      wrapper?.id,\n      post?.url,\n      wrapper?.url,\n      ''\n    )).trim();\n    if (!id) continue;\n    const existing = unique.get(id);\n    const candidate = { wrapper, request };\n    // Прямой поисковый результат приоритетнее широкого запроса «банк».\n    if (!existing || request.search_query_type === 'direct') {\n      unique.set(id, candidate);\n    }\n  }\n}\ndiagnostics.unique_before_filters = unique.size;\n\nconst directCandidates = [];\nconst commentCandidates = [];\nfor (const [id, entry] of unique.entries()) {\n  const wrapper = entry.wrapper || {};\n  const post = wrapper?.post || wrapper;\n  const content = post?.content || {};\n  const author = post?.author || wrapper?.author || {};\n  const engagement = post?.engagement || wrapper?.engagement || {};\n  const flags = post?.flags || wrapper?.flags || {};\n  const text = String(first(content?.text, post?.text, wrapper?.text, '')).trim();\n  const parentUrl = String(first(post?.url, wrapper?.url, '')).trim();\n  const username = String(first(\n    author?.username,\n    author?.handle,\n    'unknown'\n  )).replace(/^@/, '').trim();\n  const normalizedUsername = username.toLowerCase();\n  const officialHandles = new Set(\n    (cfg.official_brand_handles || [])\n      .map((value) => String(value).replace(/^@/, '').trim().toLowerCase())\n      .filter(Boolean)\n  );\n  if (cfg.ignore_official_authors && officialHandles.has(normalizedUsername)) {\n    diagnostics.rejected_official_author++;\n    continue;\n  }\n\n  // Threads Search иногда возвращает ответ как search-hit, но в post.url\n  // оставляет URL родительского поста. Несовпадение владельца URL и автора\n  // является надёжным признаком, что найден именно комментарий/ответ.\n  const urlOwner = String(\n    parentUrl.match(/threads\\.(?:com|net)\\/@([^/]+)\\/post\\//iu)?.[1] || ''\n  ).replace(/^@/, '').toLowerCase();\n  const explicitReplySignal = Boolean(\n    wrapper?.is_reply\n    || post?.is_reply\n    || wrapper?.reply_to_id\n    || post?.reply_to_id\n    || /^(?:comment|reply)$/iu.test(String(first(\n      wrapper?.type,\n      wrapper?.item_type,\n      post?.type,\n      post?.item_type,\n      ''\n    )))\n  );\n  const searchHitIsComment = explicitReplySignal\n    || Boolean(urlOwner && normalizedUsername && urlOwner !== normalizedUsername);\n  const shortcode = String(first(\n    post?.shortcode,\n    post?.code,\n    post?.post_code,\n    post?.ext?.shortcode,\n    post?.ext?.code,\n    wrapper?.shortcode,\n    wrapper?.code,\n    wrapper?.post_code,\n    wrapper?.ext?.shortcode,\n    wrapper?.ext?.code,\n    ''\n  ) || '').trim();\n  const constructedOwnUrl = normalizedUsername && shortcode\n    ? 'https://www.threads.com/@' + username + '/post/' + shortcode\n    : '';\n  const explicitOwnUrl = String(first(\n    post?.comment_url,\n    post?.reply_url,\n    post?.permalink,\n    post?.ext?.comment_url,\n    post?.ext?.reply_url,\n    post?.ext?.permalink,\n    wrapper?.comment_url,\n    wrapper?.reply_url,\n    wrapper?.permalink,\n    wrapper?.ext?.comment_url,\n    wrapper?.ext?.reply_url,\n    wrapper?.ext?.permalink,\n    ''\n  ) || '').trim();\n  const explicitOwnUrlOwner = String(\n    explicitOwnUrl.match(/threads\\.(?:com|net)\\/@([^/]+)\\/post\\//iu)?.[1] || ''\n  ).replace(/^@/, '').toLowerCase();\n  const candidateOwnUrl = explicitOwnUrl\n    && explicitOwnUrlOwner === normalizedUsername\n      ? explicitOwnUrl\n      : constructedOwnUrl;\n  const commentUrl = searchHitIsComment\n    && candidateOwnUrl\n      ? candidateOwnUrl\n      : '';\n  const url = parentUrl;\n  if (!text || !url) {\n    diagnostics.rejected_no_text_or_url++;\n    continue;\n  }\n\n  const direct = mention.test(text);\n  const bankPost = bankContext.test(text);\n  const canInspectComments = cfg.enable_comment_search\n    && entry.request?.search_query_type === 'comment_discovery'\n    && bankPost;\n  if (!direct && !canInspectComments) {\n    diagnostics.rejected_no_direct_or_bank_context++;\n    continue;\n  }\n\n  const publishedAt = String(first(\n    post?.published_at,\n    wrapper?.published_at,\n    post?.created_at,\n    wrapper?.created_at,\n    ''\n  ));\n  const publishedMs = Date.parse(publishedAt);\n  if (cfg.use_date_filter && (\n    !Number.isFinite(publishedMs)\n    || publishedMs < startMs\n    || publishedMs > endMs\n  )) {\n    diagnostics.rejected_time++;\n    continue;\n  }\n  if (cfg.strict_russian_only && !isRussianText(text)) {\n    diagnostics.rejected_non_russian++;\n    diagnostics.rejected_language_details.push({\n      post_id: id,\n      reason: 'текст не является русскоязычным',\n    });\n    continue;\n  }\n  const profanityMatch = cfg.reject_profanity\n    ? text.match(profanityStop)?.[0] || ''\n    : '';\n  if (profanityMatch) {\n    diagnostics.rejected_profanity++;\n    diagnostics.rejected_profanity_details.push({\n      post_id: id,\n      matched: profanityMatch,\n    });\n    continue;\n  }\n  const socialSpamMatch = cfg.reject_social_spam\n    ? text.match(socialSpamStop)?.[0] || ''\n    : '';\n  if (socialSpamMatch) {\n    diagnostics.rejected_social_spam++;\n    diagnostics.rejected_social_spam_details.push({\n      post_id: id,\n      matched: socialSpamMatch,\n    });\n    continue;\n  }\n  const blockedTopic = detectStopTopic(text);\n  if (cfg.use_safety_filter && (flags?.nsfw === true || blockedTopic)) {\n    diagnostics.rejected_safety++;\n    diagnostics.rejected_stop_topic_details.push({\n      post_id: id,\n      blocked_topic: flags?.nsfw === true ? '18+ / NSFW' : blockedTopic,\n    });\n    continue;\n  }\n\n  const authorName = String(first(author?.display_name, author?.name, username));\n  const locationText = [\n    author?.location, author?.bio, author?.country,\n    post?.location, post?.place, post?.geo,\n    wrapper?.location, wrapper?.place, wrapper?.geo,\n  ].map(textOf).join(' ');\n  const countryCode = String(first(\n    author?.country_code,\n    post?.country_code,\n    wrapper?.country_code,\n    ''\n  )).toUpperCase();\n  const searchable = [text, username, authorName, locationText].join(' ');\n  const authorIsOfficialByHandle = officialHandles.has(normalizedUsername);\n  const mentionsOfficialByHandle = /@sberbankby\\b/iu.test(searchable);\n  const explicitByBrand = rbBrand.test(searchable);\n  const rbMatch = searchable.match(rb)?.[0] || '';\n  const geoStopMatch = cfg.geo_stop_enabled\n    ? searchable.match(geoStop)?.[0] || ''\n    : '';\n  // Совпадение с названием страны/города только отмечаем для диагностики.\n  // Само упоминание не определяет рынок и передаётся ИИ для смысловой оценки.\n  if (geoStopMatch) {\n    diagnostics.passed_geo_mentions_to_ai++;\n    diagnostics.passed_geo_mentions_to_ai_details.push({\n      post_id: id,\n      matched: geoStopMatch,\n      decision: 'передано ИИ; контекстное упоминание страны не блокирует пост',\n    });\n  }\n  const hasRbEvidence = countryCode === 'BY'\n    || authorIsOfficialByHandle\n    || mentionsOfficialByHandle\n    || explicitByBrand\n    || Boolean(rbMatch);\n  // Из текста не выводим иностранный рынок по одному слову или городу.\n  // Код страны из метаданных остаётся полезной подсказкой для ИИ.\n  const hasRuEvidence = countryCode === 'RU';\n\n  const region = hasRbEvidence ? 'BY' : (hasRuEvidence ? 'RU' : 'UNKNOWN');\n  let regionEvidence = 'регион не определён; иностранный рынок не выводится по одному упоминанию';\n  if (countryCode === 'BY') regionEvidence = 'country_code=BY';\n  else if (authorIsOfficialByHandle) regionEvidence = 'автор — официальный аккаунт банка';\n  else if (mentionsOfficialByHandle) regionEvidence = 'упоминание @sberbankby';\n  else if (explicitByBrand) {\n    regionEvidence = searchable.match(rbBrand)?.[0] || 'белорусское обозначение банка';\n  } else if (rbMatch) regionEvidence = rbMatch;\n  else if (countryCode === 'RU') regionEvidence = 'country_code=RU';\n\n  // В Threads это две разные метрики. Во всём дальнейшем flow\n  // metrics.reposts всегда означает их сумму: репосты + «поделиться».\n  const repostsOnly = num(\n    engagement?.reposts,\n    engagement?.repost_count,\n    engagement?.reposts_count,\n    post?.reposts,\n    post?.repost_count,\n    post?.reposts_count\n  );\n  // SocialCrawl может вернуть счётчик с иконки «Поделиться» как\n  // shares, saves или reshares. Это альтернативные представления одной\n  // метрики, поэтому берём максимум, а не складываем их между собой.\n  const shares = Math.max(\n    num(\n      engagement?.shares,\n      engagement?.share_count,\n      engagement?.shares_count,\n      post?.shares,\n      post?.share_count,\n      post?.shares_count,\n      post?.ext?.shares,\n      post?.ext?.share_count,\n      post?.ext?.shares_count\n    ),\n    num(\n      engagement?.saves,\n      engagement?.save_count,\n      engagement?.saves_count,\n      engagement?.reshares,\n      engagement?.reshare_count,\n      engagement?.reshares_count,\n      post?.saves,\n      post?.save_count,\n      post?.saves_count,\n      post?.reshares,\n      post?.reshare_count,\n      post?.reshares_count,\n      post?.ext?.saves,\n      post?.ext?.save_count,\n      post?.ext?.reshares,\n      post?.ext?.reshare_count\n    )\n  );\n\n  const candidate = {\n    id,\n    url,\n    text: text.slice(0, 1600),\n    published_at: publishedAt,\n    author: {\n      username,\n      name: authorName,\n      location: locationText.slice(0, 300),\n      verified: Boolean(author?.verified),\n    },\n    region,\n    region_evidence: regionEvidence,\n    belarus_evidence: regionEvidence,\n    direct_brand_mention: direct,\n    direct_comment_mention: direct && searchHitIsComment,\n    search_hit_is_comment: searchHitIsComment,\n    parent_post_url: searchHitIsComment ? parentUrl : '',\n    detected_comment_url: searchHitIsComment ? commentUrl : '',\n    needs_comments: !direct && canInspectComments,\n    mention_matches: direct\n      ? (text.match(mention)?.[0]?.trim() || cfg.brand)\n      : '',\n    fundraising_only_signal: fundraisingSignal.test(text),\n    metrics: {\n      views: nullableNum(\n        engagement?.views,\n        engagement?.view_count,\n        engagement?.views_count,\n        post?.views,\n        post?.view_count,\n        post?.views_count,\n        post?.ext?.views,\n        post?.ext?.view_count\n      ),\n      likes: num(engagement?.likes, engagement?.like_count, post?.likes_count),\n      replies: num(\n        engagement?.replies,\n        engagement?.comments,\n        engagement?.reply_count,\n        post?.reply_count,\n        post?.comments_count\n      ),\n      reposts_only: repostsOnly,\n      shares,\n      reposts: repostsOnly + shares,\n    },\n    raw_search_post: wrapper,\n  };\n\n  if (direct) {\n    diagnostics.accepted_direct++;\n    directCandidates.push(candidate);\n  } else {\n    diagnostics.accepted_comment_candidates++;\n    commentCandidates.push(candidate);\n  }\n}\n\nconst commentLimit = Math.max(0, Number(\n  cfg.max_comment_candidates_per_run || 0\n));\nconst limitedCommentCandidates = commentLimit\n  ? commentCandidates.slice(0, commentLimit)\n  : [];\ndiagnostics.comment_candidates_capped = Math.max(\n  0,\n  commentCandidates.length - limitedCommentCandidates.length\n);\nconst candidates = [...directCandidates, ...limitedCommentCandidates];\n\nreturn [{\n  json: {\n    ...cfg,\n    candidates,\n    has_prefiltered_candidates: candidates.length > 0,\n    diagnostics,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9072,
+        4336
+      ],
+      "id": "4f91f625-abd9-47ff-b83b-3dbf5f16e7b6",
+      "name": "02A · Дешёвые проверки до доп. запросов"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "49Nt2OxPioQaaQWE",
+          "mode": "list",
+          "cachedResultName": "task2_sber_mentions_prod",
+          "cachedResultUrl": "/projects/9hwtFM6S1qlPcgbn/datatables/49Nt2OxPioQaaQWE"
+        },
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        9312,
+        4336
+      ],
+      "id": "0a435274-a785-4368-bb04-3269929638b6",
+      "name": "02B · Data Table — получить отправленные",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $('02A · Дешёвые проверки до доп. запросов').first().json || {};\nconst rows = $input.all().map((item) => item.json || {});\nconst seen = new Set(\n  rows.map((row) => String(row.post_id || '')).filter(Boolean)\n);\nconst discovered = Array.isArray(batch.candidates) ? batch.candidates : [];\nconst candidates = discovered.filter(\n  (candidate) => !seen.has(String(candidate.id))\n);\n\nreturn [{\n  json: {\n    ...batch,\n    candidates,\n    prefiltered_count: discovered.length,\n    duplicate_posts_count: discovered.length - candidates.length,\n    new_candidate_count: candidates.length,\n    has_new_candidates: candidates.length > 0,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9552,
+        4336
+      ],
+      "id": "3c2a3e17-e84f-47f3-a429-9c830b0c02d5",
+      "name": "02C · Убрать уже отправленные"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0809d7a7-a6ed-44b1-b0a0-ca19e36831e9",
+              "leftValue": "={{ $json.has_new_candidates }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        9792,
+        4336
+      ],
+      "id": "1d3aebbb-a766-44a9-aca3-7b0120769e59",
+      "name": "02D · Есть новые кандидаты?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $input.first().json || {};\nconst candidates = Array.isArray(batch.candidates) ? batch.candidates : [];\n\nreturn candidates.map((candidate) => ({\n  json: {\n    ...candidate,\n    enable_comment_search: Boolean(batch.enable_comment_search),\n    fetch_final_post_details: Boolean(batch.fetch_final_post_details),\n    use_safety_filter: Boolean(batch.use_safety_filter),\n    use_ru_filter: Boolean(batch.use_ru_filter),\n    brand: batch.brand,\n    brand_aliases: batch.brand_aliases,\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10032,
+        4224
+      ],
+      "id": "08b0daf8-0502-47b4-ace7-fa8f8e05b2d8",
+      "name": "02E · Развернуть новых кандидатов"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0809d7a7-a6ed-44b1-b0a0-ca19e36831e9",
+              "leftValue": "={{ $json.needs_comments }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        10272,
+        4224
+      ],
+      "id": "c5010676-1ec1-40e4-a1be-c72aae51ebf7",
+      "name": "03A · Нужны комментарии?"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.socialcrawl.dev/v1/threads/post/comments?url=' + encodeURIComponent($json.url) + '&trim=false' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        10512,
+        4096
+      ],
+      "id": "b1d1cf03-0f74-49f2-a62a-bf83d8d6ac19",
+      "name": "03B · SocialCrawl — комментарии только после фильтров",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "qIYENmM0DlhSGP0s",
+          "name": "SocialCrawl"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const source = $('02E · Развернуть новых кандидатов').item.json || {};\nreturn {\n  json: {\n    ...source,\n    comments_response: $json,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10752,
+        4096
+      ],
+      "id": "7c6aef2c-f3e2-4f16-8de7-ce612f5ad9b6",
+      "name": "03C · Присоединить комментарии"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    comments_response: null,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10752,
+        4352
+      ],
+      "id": "9bb3a216-b886-49ca-8793-9466c2feb8fd",
+      "name": "03D · Без запроса комментариев"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        10992,
+        4224
+      ],
+      "id": "9deb1539-d974-4038-9e90-477d3a2ff61b",
+      "name": "03E · Объединить после комментариев"
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $('02C · Убрать уже отправленные').first().json || {};\nconst items = $input.all().map((item) => item.json || {});\nconst first = (...values) => values.find(\n  (value) => value !== undefined && value !== null && value !== ''\n);\nconst escRe = (value) => String(value).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst aliases = (batch.brand_aliases || [])\n  .map((value) => escRe(String(value).replace(/^@/, '')))\n  .sort((a, b) => b.length - a.length)\n  .join('|');\nconst mention = new RegExp(\n  '(?:^|[^\\\\p{L}\\\\p{N}_])@?(?:' + aliases\n    + ')(?:а|у|ом|е|ы|и|ов|ами|ах)?(?=$|[^\\\\p{L}\\\\p{N}_])',\n  'iu'\n);\nconst STOP_TOPIC_RULES = [\n  { topic: 'политика', pattern: /(?:политик\\p{L}*|politic\\p{L}*)/iu },\n  {\n    topic: 'критика государственных институтов и органов власти',\n    pattern: /(?:(?:критик\\p{L}*|обвин\\p{L}*|руг\\p{L}*|недовол\\p{L}*|возмущ\\p{L}*)[\\s\\S]{0,100}(?:государств\\p{L}*|госорган\\p{L}*|орган\\p{L}*\\s+власт\\p{L}*|власт\\p{L}*|правительств\\p{L}*|министерств\\p{L}*|ведомств\\p{L}*|парламент\\p{L}*|президент\\p{L}*)|(?:государств\\p{L}*|госорган\\p{L}*|орган\\p{L}*\\s+власт\\p{L}*|власт\\p{L}*|правительств\\p{L}*|министерств\\p{L}*|ведомств\\p{L}*|парламент\\p{L}*|президент\\p{L}*)[\\s\\S]{0,100}(?:критик\\p{L}*|обвин\\p{L}*|руг\\p{L}*|недовол\\p{L}*|возмущ\\p{L}*))/iu,\n  },\n  { topic: 'межнациональные конфликты', pattern: /(?:межнациональн\\p{L}*|межэтническ\\p{L}*|этническ\\p{L}*\\s+конфликт\\p{L}*)/iu },\n  { topic: 'конфликты', pattern: /(?:конфликт\\p{L}*|противостояни\\p{L}*)/iu },\n  { topic: 'аборты', pattern: /(?:аборт\\p{L}*|прерыван\\p{L}*\\s+беременн\\p{L}*)/iu },\n  { topic: 'эвтаназия', pattern: /(?:эвтанази\\p{L}*|euthanasi\\p{L}*)/iu },\n  { topic: 'религия', pattern: /(?:религи\\p{L}*|церков\\p{L}*|православ\\p{L}*|христиан\\p{L}*|католиц\\p{L}*|ислам\\p{L}*|мусульман\\p{L}*|иудаизм\\p{L}*|атеизм\\p{L}*|аллах\\p{L}*|господ\\p{L}*|(?:^|[^\\p{L}])бог(?:а|у|ом|е|и)?(?=$|[^\\p{L}]))/iu },\n  { topic: 'секс', pattern: /(?:секс\\p{L}*|sexual\\p{L}*)/iu },\n  { topic: 'цензура', pattern: /(?:цензур\\p{L}*|censorship\\p{L}*)/iu },\n  { topic: 'отношения мужчины и женщины', pattern: /(?:(?:отношени\\p{L}*|взаимоотношени\\p{L}*)[\\s\\S]{0,80}(?:мужчин\\p{L}*|парн\\p{L}*)[\\s\\S]{0,80}(?:женщин\\p{L}*|девуш\\p{L}*)|(?:отношени\\p{L}*|взаимоотношени\\p{L}*)[\\s\\S]{0,80}(?:женщин\\p{L}*|девуш\\p{L}*)[\\s\\S]{0,80}(?:мужчин\\p{L}*|парн\\p{L}*))/iu },\n  { topic: 'домашнее насилие', pattern: /(?:домашн\\p{L}*\\s+насили\\p{L}*|семейн\\p{L}*\\s+насили\\p{L}*|абьюз\\p{L}*)/iu },\n  { topic: 'излишне откровенные обсуждения физиологии и интимных подробностей', pattern: /(?:интимн\\p{L}*\\s+подробност\\p{L}*|половы\\p{L}*\\s+орган\\p{L}*|менструац\\p{L}*|эякуляц\\p{L}*|дефекац\\p{L}*|откровенн\\p{L}*[\\s\\S]{0,50}физиологи\\p{L}*)/iu },\n  { topic: 'пропаганда чайлдфри', pattern: /(?:чайлдфри\\p{L}*|childfree\\p{L}*|пропаганд\\p{L}*[\\s\\S]{0,60}(?:бездетн\\p{L}*|отказ\\p{L}*\\s+от\\s+дет\\p{L}*))/iu },\n  { topic: 'вопросы гендерного равенства', pattern: /(?:гендерн\\p{L}*\\s+равенств\\p{L}*|гендерн\\p{L}*\\s+неравенств\\p{L}*|gender\\s+equality)/iu },\n  { topic: 'эйджизм', pattern: /(?:эйджизм\\p{L}*|ageism\\p{L}*|дискриминаци\\p{L}*\\s+по\\s+возраст\\p{L}*)/iu },\n  { topic: 'дискриминация', pattern: /(?:дискриминаци\\p{L}*|discrimination\\p{L}*)/iu },\n  { topic: 'расизм', pattern: /(?:расизм\\p{L}*|расист\\p{L}*|racism\\p{L}*)/iu },\n  { topic: 'атрибуты запрещённых субкультур', pattern: /(?:запрещ[её]нн\\p{L}*\\s+субкультур\\p{L}*|экстремистск\\p{L}*\\s+символик\\p{L}*|свастик\\p{L}*)/iu },\n  { topic: 'национализм', pattern: /(?:национализм\\p{L}*|националист\\p{L}*|nationalism\\p{L}*)/iu },\n  { topic: 'нацизм', pattern: /(?:нацизм\\p{L}*|нацист\\p{L}*|неонаци\\p{L}*|nazism\\p{L}*)/iu },\n  { topic: 'наркотические вещества', pattern: /(?:наркот\\p{L}*|кокаин\\p{L}*|героин\\p{L}*|метамфетамин\\p{L}*|марихуан\\p{L}*|каннабис\\p{L}*)/iu },\n  { topic: 'оружие', pattern: /(?:оружи\\p{L}*|пистолет\\p{L}*|винтовк\\p{L}*|боеприпас\\p{L}*|огнестрельн\\p{L}*)/iu },\n  { topic: 'суицид', pattern: /(?:суицид\\p{L}*|самоубийств\\p{L}*|поконч\\p{L}*\\s+с\\s+собой)/iu },\n  { topic: '18+ и порнографический или эротический контент', pattern: /(?:18\\s*\\+|порн\\p{L}*|эрот\\p{L}*|onlyfans)/iu },\n  { topic: 'проституция и эскорт', pattern: /(?:эскорт\\p{L}*|проститу\\p{L}*)/iu },\n  { topic: 'азартные игры и букмекерство', pattern: /(?:казино\\p{L}*|букмекер\\p{L}*)/iu },\n  { topic: 'военные действия, санкции, митинги и протесты', pattern: /(?:санкци\\p{L}*|военн\\p{L}*\\s+(?:действ\\p{L}*|операци\\p{L}*|конфликт\\p{L}*)|обстрел\\p{L}*|ракет\\p{L}*[\\s-]*(?:удар\\p{L}*|обстрел\\p{L}*|атак\\p{L}*)|фронт\\p{L}*|оккупаци\\p{L}*|бомбардировк\\p{L}*|боев\\p{L}*[\\s-]*(?:действ\\p{L}*|столкновени\\p{L}*)|оппозици\\p{L}*|митинг\\p{L}*|протест\\p{L}*)/iu },\n];\nconst detectStopTopic = (value) => {\n  const source = String(value || '').replace(/\\s+/g, ' ').trim();\n  for (const rule of STOP_TOPIC_RULES) {\n    if (rule.pattern.test(source)) return rule.topic;\n  }\n  return '';\n};\n\nconst cleanCommentFilterText = (value) => String(value || '')\n  .replace(/https?:\\/\\/\\S+/giu, ' ')\n  .replace(/www\\.\\S+/giu, ' ')\n  .replace(/@[\\p{L}\\p{N}_.]+/gu, ' ')\n  .replace(/#[\\p{L}\\p{N}_]+/gu, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst isRussianText = (value) => {\n  const filter = batch.language_filter || {};\n  if (!filter.enabled) return true;\n  const source = cleanCommentFilterText(value);\n  const letters = source.match(/\\p{L}/gu) || [];\n  if (!letters.length) return false;\n  const russianCount = (source.match(/[А-Яа-яЁё]/g) || []).length;\n  const latinCount = (source.match(/[A-Za-z]/g) || []).length;\n  const foreignCyrillicCount = (source.match(/[ІіЇїЄєҐґЎў]/g) || []).length;\n  return russianCount >= Number(filter.minRussianLetters || 5)\n    && russianCount / letters.length >= Number(filter.minRussianShare || 0.70)\n    && latinCount / letters.length <= Number(filter.maxLatinShare || 0.30)\n    && (!filter.rejectForeignCyrillic || foreignCyrillicCount === 0);\n};\n\nconst profanityStop = new RegExp(batch.profanity_pattern || '(?!)', 'iu');\nconst socialSpamStop = new RegExp(batch.social_spam_pattern || '(?!)', 'iu');\n\nconst rb = /(?:беларус|белорус|беларуск|belarus|\\bby\\b|\\bbyn\\b|минск|minsk|гомел|gomel|homiel|брест|brest|витебск|vitebsk|могил[её]в|mogilev|гродно|grodno|hrodna|бобруйск|баранович|полоцк|новополоцк|солигорск|жодино|лида|пинск|мозыр|орша|борисов|молодечно|\\bрб\\b|бел\\.?\\s*руб|\\+375)/iu;\nconst rbBrand = /(?:@?sberbankby\\b|sber-bank\\.by|бпс[\\s-]*сбербанк|оао\\s*[«\"']?сбер\\s*банк)/iu;\n\nconst normalizeUrl = (value) => String(value || '')\n  .replace(/threads\\.net/iu, 'threads.com')\n  .replace(/\\/+$/, '')\n  .trim();\n\nconst collectComments = (roots) => {\n  const found = [];\n  const byKey = new Map();\n  const visit = (value, depth = 0, inheritedUrl = '') => {\n    if (value == null || depth > 6 || found.length >= 200) return;\n    if (Array.isArray(value)) {\n      for (const entry of value) visit(entry, depth + 1, inheritedUrl);\n      return;\n    }\n    if (typeof value !== 'object') return;\n\n    const author = value?.author || value?.user || value?.owner\n      || value?.post?.author || value?.reply?.author || {};\n    const username = String(first(\n      author?.username,\n      author?.handle,\n      value?.author_username,\n      value?.username,\n      value?.post?.author_username,\n      value?.reply?.author_username,\n      ''\n    )).replace(/^@/, '').trim();\n    const shortcode = String(first(\n      value?.shortcode,\n      value?.code,\n      value?.post_code,\n      value?.post?.shortcode,\n      value?.post?.code,\n      value?.reply?.shortcode,\n      value?.reply?.code,\n      value?.ext?.shortcode,\n      value?.post?.ext?.shortcode,\n      value?.reply?.ext?.shortcode,\n      ''\n    )).trim();\n    const constructedUrl = username && shortcode\n      ? 'https://www.threads.com/@' + username + '/post/' + shortcode\n      : '';\n    const explicitUrl = String(first(\n      value?.permalink,\n      value?.url,\n      value?.comment_url,\n      value?.reply_url,\n      value?.share_url,\n      value?.web_url,\n      value?.ext?.permalink,\n      value?.ext?.url,\n      value?.content?.permalink,\n      value?.content?.url,\n      value?.post?.permalink,\n      value?.post?.url,\n      value?.post?.ext?.permalink,\n      value?.post?.ext?.url,\n      value?.reply?.permalink,\n      value?.reply?.url,\n      value?.reply?.ext?.permalink,\n      value?.reply?.ext?.url,\n      ''\n    )).trim();\n    const url = explicitUrl || constructedUrl || inheritedUrl;\n    const id = String(first(\n      value?.comment_id,\n      value?.reply_id,\n      value?.id,\n      value?.pk,\n      value?.post?.id,\n      value?.reply?.id,\n      ''\n    )).trim();\n    const text = String(first(\n      value?.content?.text,\n      value?.text,\n      value?.body,\n      value?.comment_text,\n      value?.post?.content?.text,\n      value?.post?.text,\n      value?.reply?.content?.text,\n      value?.reply?.text,\n      ''\n    )).trim();\n\n    if (text) {\n      const key = id || (username && shortcode\n        ? username + '|' + shortcode\n        : text);\n      const existing = byKey.get(key);\n      if (existing) {\n        if (!existing.url && url) existing.url = url;\n        if (!existing.id && id) existing.id = id;\n      } else {\n        const record = {\n          id,\n          url,\n          text: text.slice(0, 1000),\n          username,\n          author_name: String(first(author?.display_name, author?.name, username, '')),\n        };\n        byKey.set(key, record);\n        found.push(record);\n      }\n    }\n\n    for (const key of [\n      'items', 'comments', 'replies', 'children',\n      'data', 'comment', 'reply', 'post',\n    ]) {\n      if (value[key] !== undefined) {\n        visit(value[key], depth + 1, url);\n      }\n    }\n  };\n  for (const root of roots) visit(root);\n  return found;\n};\n\nconst posts = [];\nlet commentCreditsUsed = 0;\nlet commentRequests = 0;\nlet rejectedWithoutBrandComment = 0;\nlet rejectedOfficialComments = 0;\nlet rejectedCommentSafety = 0;\nlet rejectedCommentLanguage = 0;\nlet rejectedCommentProfanity = 0;\nlet rejectedCommentSocialSpam = 0;\nlet rejectedCommentGeo = 0;\nconst rejectedCommentStopTopics = [];\nlet rejectedCommentRussia = 0;\n\nconst officialHandles = new Set(\n  (batch.official_brand_handles || [])\n    .map((value) => String(value).replace(/^@/, '').trim().toLowerCase())\n    .filter(Boolean)\n);\nconst isOfficialAuthor = (username) => batch.ignore_official_authors === true\n  && officialHandles.has(String(username || '').replace(/^@/, '').trim().toLowerCase());\n\nfor (const item of items) {\n  const directSearchComment = item.direct_comment_mention === true\n    || item.search_hit_is_comment === true;\n  const direct = item.direct_brand_mention === true && !directSearchComment;\n  const response = item.comments_response || {};\n  if (item.needs_comments) {\n    commentRequests++;\n    commentCreditsUsed += Number(response.credits_used || 0);\n  }\n  const commentRoots = [\n    response?.data?.items,\n    response?.items,\n    response?.data?.comments,\n    response?.comments,\n  ].filter((value) => value !== undefined && value !== null);\n  const collectedComments = collectComments(commentRoots);\n  if (directSearchComment) {\n    collectedComments.unshift({\n      id: String(item.id || ''),\n      url: String(item.detected_comment_url || ''),\n      text: String(item.text || ''),\n      username: String(item.author?.username || ''),\n      author_name: String(item.author?.name || ''),\n    });\n  }\n  const comments = collectedComments.filter((record) => {\n    if (isOfficialAuthor(record.username)) {\n      rejectedOfficialComments++;\n      return false;\n    }\n    return true;\n  });\n  const brandComments = comments.filter((record) => mention.test(record.text));\n\n  if (!direct && !brandComments.length) {\n    rejectedWithoutBrandComment++;\n    continue;\n  }\n  const brandCommentText = brandComments.map((record) => record.text).join(' ');\n  if (!direct) {\n    if (batch.strict_russian_only && !isRussianText(brandCommentText)) {\n      rejectedCommentLanguage++;\n      continue;\n    }\n    if (batch.reject_profanity && profanityStop.test(brandCommentText)) {\n      rejectedCommentProfanity++;\n      continue;\n    }\n    if (batch.reject_social_spam && socialSpamStop.test(brandCommentText)) {\n      rejectedCommentSocialSpam++;\n      continue;\n    }\n    // Географические упоминания в комментариях передаются ИИ:\n    // комментарий о другой стране не является самостоятельной причиной отказа.\n    const blockedCommentTopic = detectStopTopic(brandCommentText);\n    if (batch.use_safety_filter && blockedCommentTopic) {\n      rejectedCommentSafety++;\n      rejectedCommentStopTopics.push({\n        post_id: String(item.id || ''),\n        blocked_topic: blockedCommentTopic,\n      });\n      continue;\n    }\n  }\n\n  let region = item.region || 'UNKNOWN';\n  let regionEvidence = item.region_evidence || 'нет данных';\n  if (!direct && brandCommentText) {\n    const commentHasBy = rbBrand.test(brandCommentText) || rb.test(brandCommentText);\n    if (commentHasBy) {\n      region = 'BY';\n      regionEvidence = brandCommentText.match(rbBrand)?.[0]\n        || brandCommentText.match(rb)?.[0]\n        || 'белорусский признак в комментарии';\n    }\n  }\n\n  const linkedBrandComment = brandComments.find((record) =>\n    record.url && normalizeUrl(record.url) !== normalizeUrl(item.url)\n  ) || brandComments[0] || null;\n  const mentionCommentUrl = linkedBrandComment?.url\n    && normalizeUrl(linkedBrandComment.url) !== normalizeUrl(item.url)\n      ? String(linkedBrandComment.url).trim()\n      : '';\n  const commentSamples = [\n    ...brandComments.map((record) => record.text),\n    ...comments.filter((record) => !mention.test(record.text))\n      .map((record) => record.text),\n  ].filter((value, index, values) => values.indexOf(value) === index)\n    .slice(0, 8)\n    .map((value) => value.slice(0, 280));\n\n  const post = { ...item };\n  delete post.comments_response;\n  delete post.raw_search_post;\n  delete post.enable_comment_search;\n  delete post.fetch_final_post_details;\n  delete post.use_safety_filter;\n  delete post.use_ru_filter;\n  delete post.brand;\n  delete post.brand_aliases;\n  delete post.official_brand_handles;\n  delete post.ignore_official_authors;\n  delete post.needs_comments;\n  delete post.direct_brand_mention;\n  delete post.direct_comment_mention;\n  delete post.search_hit_is_comment;\n  delete post.detected_comment_url;\n  post.mention_source = direct ? 'post' : 'comment';\n  post.mention_matches = direct\n    ? item.mention_matches\n    : (linkedBrandComment?.text.match(mention)?.[0]?.trim() || batch.brand);\n  post.mention_comment_id = direct ? '' : String(linkedBrandComment?.id || '');\n  post.mention_comment_text = direct ? '' : String(linkedBrandComment?.text || '');\n  post.mention_comment_url = direct ? '' : mentionCommentUrl;\n  post.comment_samples = commentSamples;\n  post.comment_text_status = commentSamples.length\n    ? 'available'\n    : 'unavailable_from_socialcrawl';\n  post.region = region;\n  post.region_evidence = regionEvidence;\n  post.belarus_evidence = regionEvidence;\n  posts.push(post);\n}\n\nreturn [{\n  json: {\n    ...batch,\n    candidates: undefined,\n    posts,\n    has_validated_posts: posts.length > 0,\n    diagnostics: {\n      ...(batch.diagnostics || {}),\n      comment_requests: commentRequests,\n      comment_credits_used: commentCreditsUsed,\n      rejected_without_brand_comment: rejectedWithoutBrandComment,\n      rejected_official_comments: rejectedOfficialComments,\n      rejected_comment_safety: rejectedCommentSafety,\n      rejected_comment_language: rejectedCommentLanguage,\n      rejected_comment_profanity: rejectedCommentProfanity,\n      rejected_comment_social_spam: rejectedCommentSocialSpam,\n      rejected_comment_geo: rejectedCommentGeo,\n      rejected_comment_stop_topics: rejectedCommentStopTopics,\n      rejected_comment_russia: rejectedCommentRussia,\n      validated_before_llm: posts.length,\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11232,
+        4224
+      ],
+      "id": "b7825ba9-3e86-4dac-9f2f-e3d118cb8145",
+      "name": "03F · Проверить прямое упоминание или комментарий"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0809d7a7-a6ed-44b1-b0a0-ca19e36831e9",
+              "leftValue": "={{ $json.has_validated_posts }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11472,
+        4224
+      ],
+      "id": "fb3c7aa9-03e1-45d5-b025-b139b50a70db",
+      "name": "03G · Есть посты перед LLM?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const agent = $input.first().json || {};\nconst batch = $('04 · Задание AI-аналитику2').first().json || {};\nconst posts = Array.isArray(batch.posts) ? batch.posts : [];\nconst raw = String(\n  agent.output\n  || agent.text\n  || agent.response?.generations?.[0]?.[0]?.text\n  || agent.response\n  || ''\n).trim();\nlet parsed = {};\ntry {\n  const firstBrace = raw.indexOf('{');\n  const lastBrace = raw.lastIndexOf('}');\n  parsed = JSON.parse(\n    firstBrace >= 0 && lastBrace > firstBrace\n      ? raw.slice(firstBrace, lastBrace + 1)\n      : raw\n  );\n} catch (_) {\n  parsed = {};\n}\n\nconst returnedAnalyses = Array.isArray(parsed.analyses) ? parsed.analyses : [];\nconst analyses = new Map(\n  returnedAnalyses.map((analysis) => [String(analysis.id), analysis])\n);\nconst selected = [];\nconst stats = {\n  input_to_llm: posts.length,\n  analyses_returned: returnedAnalyses.length,\n  filtered_by_ai: 0,\n  filtered_by_relevance_ai: 0,\n  filtered_by_stop_topic_ai: 0,\n  filtered_by_mandatory_ai: 0,\n  filtered_by_language_ai: 0,\n  filtered_by_profanity_ai: 0,\n  filtered_by_geo_ai: 0,\n  filtered_by_social_spam_ai: 0,\n  filtered_not_sber_belarus_ai: 0,\n  filtered_by_region_ai: 0,\n  allowed_unconfirmed_region_ai: 0,\n  filtered_missing_ai: 0,\n  capped_after_ai: 0,\n};\n\nfor (const post of posts) {\n  const analysis = analyses.get(String(post.id));\n  if (!analysis) {\n    stats.filtered_by_ai++;\n    stats.filtered_missing_ai++;\n    continue;\n  }\n  const boolValue = (value) => value === true\n    || ['true', '1', 'yes', 'да'].includes(String(value ?? '').trim().toLowerCase());\n  const mandatoryPassed = boolValue(analysis.mandatory_filter_passed);\n  const contentLanguage = String(analysis.content_language || '').trim().toLowerCase();\n  const containsProfanity = boolValue(analysis.contains_profanity);\n  const geoStopDetected = boolValue(analysis.geo_stop_detected);\n  const socialSpamDetected = boolValue(analysis.social_spam_detected);\n\n  if (!mandatoryPassed) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_mandatory_ai++;\n    continue;\n  }\n  if (batch.strict_russian_only === true && contentLanguage !== 'russian') {\n    stats.filtered_by_ai++;\n    stats.filtered_by_language_ai++;\n    continue;\n  }\n  if (batch.reject_profanity === true && containsProfanity) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_profanity_ai++;\n    continue;\n  }\n  if (batch.geo_stop_enabled === true && geoStopDetected) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_geo_ai++;\n    continue;\n  }\n  if (batch.reject_social_spam === true && socialSpamDetected) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_social_spam_ai++;\n    continue;\n  }\n\n  const allowedTopicValue = String(\n    analysis.is_allowed_topic ?? 'false'\n  ).trim().toLowerCase();\n  const isAllowedTopic = analysis.is_allowed_topic === true\n    || ['true', '1', 'yes', 'да'].includes(allowedTopicValue);\n  const blockedTopic = String(analysis.blocked_topic || '').trim();\n  if (\n    batch.use_safety_filter === true\n    && (!isAllowedTopic || blockedTopic)\n  ) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_stop_topic_ai++;\n    continue;\n  }\n\n  const relevanceValue = String(\n    analysis.is_relevant_brand_mention ?? 'false'\n  ).trim().toLowerCase();\n  const relevant = analysis.is_relevant_brand_mention === true\n    || ['true', '1', 'yes', 'да'].includes(relevanceValue);\n  if (!relevant) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_relevance_ai++;\n    continue;\n  }\n\n  const market = String(analysis.brand_market || '').trim().toLowerCase();\n  const belarusValue = String(\n    analysis.is_belarus_sber ?? ''\n  ).trim().toLowerCase();\n  const aiConfirmedBelarus = analysis.is_belarus_sber === true\n    || ['true', '1', 'yes', 'да'].includes(belarusValue)\n    || ['belarus', 'by', 'sber_belarus'].includes(market);\n  const aiForeignMarket = ['russia', 'other'].includes(market);\n  if (batch.use_ru_filter === true && aiForeignMarket) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_region_ai++;\n    continue;\n  }\n  // Рынок решает ИИ по смыслу для любого локального региона, кроме уже\n  // подтверждённого Беларусью AI-результата. Код страны/топоним не финальный вердикт.\n  const needsAiRegionDecision = batch.use_ru_filter === true\n    && !aiConfirmedBelarus;\n  const aiUncertainRegion = ['uncertain', 'unknown', 'undetermined'].includes(\n    market\n  );\n  const allowUnconfirmedRegion = batch.send_unconfirmed_region === true;\n  const canSendUnconfirmedRegion = needsAiRegionDecision\n    && aiUncertainRegion\n    && allowUnconfirmedRegion;\n\n  if (\n    needsAiRegionDecision\n    && !aiConfirmedBelarus\n    && !canSendUnconfirmedRegion\n  ) {\n    stats.filtered_by_ai++;\n    stats.filtered_by_region_ai++;\n    continue;\n  }\n  if (canSendUnconfirmedRegion) {\n    stats.allowed_unconfirmed_region_ai++;\n  }\n  if (batch.require_confirmed_sber_belarus === true && !aiConfirmedBelarus) {\n    stats.filtered_by_ai++;\n    stats.filtered_not_sber_belarus_ai++;\n    continue;\n  }\n  selected.push({ post, analysis });\n}\n\nconst limit = Math.max(1, Number(batch.max_final_posts_per_run || 20));\nconst limited = selected.slice(0, limit);\nstats.capped_after_ai = Math.max(0, selected.length - limited.length);\n\nconst batchContext = { ...batch };\ndelete batchContext.posts;\n\nif (!limited.length) {\n  return [{\n    json: {\n      is_empty: true,\n      batch_context: batchContext,\n      batch_summary: parsed.batch_summary || {},\n      ai_stats: stats,\n      needs_details: false,\n    },\n  }];\n}\n\nreturn limited.map(({ post, analysis }) => ({\n  json: {\n    is_empty: false,\n    post,\n    analysis,\n    batch_context: batchContext,\n    batch_summary: parsed.batch_summary || {},\n    ai_stats: stats,\n    needs_details: Boolean(batch.fetch_final_post_details),\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12192,
+        4096
+      ],
+      "id": "cddf6ea9-460f-4668-9833-079b0fe34a8c",
+      "name": "05A · Разобрать AI и выбрать финальные"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0809d7a7-a6ed-44b1-b0a0-ca19e36831e9",
+              "leftValue": "={{ !$json.is_empty }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12432,
+        4096
+      ],
+      "id": "091afe7c-18a4-459a-9bdf-7533eb2946fd",
+      "name": "05B · AI выбрал хотя бы один пост?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0809d7a7-a6ed-44b1-b0a0-ca19e36831e9",
+              "leftValue": "={{ $json.needs_details }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12672,
+        3968
+      ],
+      "id": "8ecceb44-aa37-4c48-b434-761795c3985b",
+      "name": "05C · Нужна полная карточка финального поста?"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.socialcrawl.dev/v1/threads/post?url=' + encodeURIComponent($json.post.url) + '&trim=false' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        12912,
+        3840
+      ],
+      "id": "af9941af-3cd5-4ff8-91fb-02bb9edcd9d9",
+      "name": "05D · SocialCrawl — полная карточка только финальных",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "qIYENmM0DlhSGP0s",
+          "name": "SocialCrawl"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const source = $('05A · Разобрать AI и выбрать финальные').item.json || {};\nreturn {\n  json: {\n    ...source,\n    detail_response: $json,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13152,
+        3840
+      ],
+      "id": "9d95b437-e27a-4515-8cc9-d684db39c067",
+      "name": "05E · Присоединить полную карточку"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    detail_response: null,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13152,
+        4096
+      ],
+      "id": "15f591f8-4399-4503-bc4d-6e7f3a7566ff",
+      "name": "05F · Без полной карточки"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        13392,
+        3968
+      ],
+      "id": "86e8e730-32e3-46f3-b0b3-8b4ee8037753",
+      "name": "05G · Объединить после полной карточки"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map((item) => item.json || {});\nconst firstItem = items[0] || {};\nconst first = (...values) => values.find(\n  (value) => value !== undefined && value !== null && value !== ''\n);\nconst nullableNum = (...values) => {\n  const value = first(...values);\n  if (value === undefined || value === null || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;\n};\nconst num = (...values) => nullableNum(...values) ?? 0;\nconst posts = [];\nconst analyses = [];\nlet detailRequests = 0;\nlet detailCreditsUsed = 0;\n\nfor (const item of items) {\n  const base = item.post || {};\n  const response = item.detail_response || {};\n  if (item.needs_details) {\n    detailRequests++;\n    detailCreditsUsed += Number(response.credits_used || 0);\n  }\n  const data = response?.data && typeof response.data === 'object'\n    ? response.data\n    : {};\n  const detailWrapper = data?.post ? data\n    : response?.post ? response\n    : data;\n  const detail = detailWrapper?.post || detailWrapper || {};\n  const engagement = detail?.engagement || {};\n  const author = detail?.author || {};\n  const currentMetrics = base.metrics || {};\n  const detailText = String(first(\n    detail?.content?.text,\n    detail?.text,\n    ''\n  )).slice(0, 1600);\n  const isCommentMention = base.mention_source === 'comment';\n  const detailRepostsOnly = num(\n    engagement?.reposts,\n    engagement?.repost_count,\n    engagement?.reposts_count,\n    detail?.reposts,\n    detail?.repost_count,\n    detail?.reposts_count\n  );\n  // Поле «Поделиться» встречается в ответах SocialCrawl под\n  // именами shares, saves и reshares. Берём самое полное значение.\n  const detailShares = Math.max(\n    num(\n      engagement?.shares,\n      engagement?.share_count,\n      engagement?.shares_count,\n      detail?.shares,\n      detail?.share_count,\n      detail?.shares_count,\n      detail?.ext?.shares,\n      detail?.ext?.share_count,\n      detail?.ext?.shares_count\n    ),\n    num(\n      engagement?.saves,\n      engagement?.save_count,\n      engagement?.saves_count,\n      engagement?.reshares,\n      engagement?.reshare_count,\n      engagement?.reshares_count,\n      detail?.saves,\n      detail?.save_count,\n      detail?.saves_count,\n      detail?.reshares,\n      detail?.reshare_count,\n      detail?.reshares_count,\n      detail?.ext?.saves,\n      detail?.ext?.save_count,\n      detail?.ext?.reshares,\n      detail?.ext?.reshare_count\n    )\n  );\n  const finalRepostsOnly = Math.max(\n    num(currentMetrics.reposts_only),\n    detailRepostsOnly\n  );\n  const finalShares = Math.max(\n    num(currentMetrics.shares),\n    detailShares\n  );\n  const finalRepostsCombined = Math.max(\n    num(currentMetrics.reposts),\n    finalRepostsOnly + finalShares\n  );\n\n  posts.push({\n    ...base,\n    // Для упоминания в комментарии base содержит автора/текст найденного\n    // комментария, а detail — родительский пост. Не смешиваем эти сущности.\n    text: isCommentMention\n      ? String(first(detailText, base.parent_post_text, '')).slice(0, 1600)\n      : String(first(detailText, base.text, '')).slice(0, 1600),\n    parent_post_text: isCommentMention\n      ? String(first(detailText, base.parent_post_text, '')).slice(0, 1600)\n      : '',\n    published_at: isCommentMention\n      ? String(base.published_at || '')\n      : String(first(\n        detail?.published_at,\n        detail?.created_at,\n        base.published_at,\n        ''\n      )),\n    author: {\n      ...(base.author || {}),\n      username: String(isCommentMention\n        ? first(base.author?.username, 'unknown')\n        : first(author?.username, author?.handle, base.author?.username, 'unknown')\n      ).replace(/^@/, ''),\n      name: String(isCommentMention\n        ? first(base.author?.name, base.author?.username, 'unknown')\n        : first(author?.display_name, author?.name, base.author?.name,\n          base.author?.username, 'unknown')\n      ),\n      verified: Boolean(isCommentMention\n        ? first(base.author?.verified, false)\n        : first(author?.verified, base.author?.verified, false)\n      ),\n    },\n    metrics: {\n      views: nullableNum(\n        engagement?.views,\n        engagement?.view_count,\n        engagement?.views_count,\n        detail?.views,\n        detail?.view_count,\n        detail?.views_count,\n        detail?.ext?.views,\n        detail?.ext?.view_count,\n        currentMetrics.views\n      ),\n      likes: Math.max(\n        num(currentMetrics.likes),\n        num(engagement?.likes, engagement?.like_count, detail?.likes_count)\n      ),\n      replies: Math.max(\n        num(currentMetrics.replies),\n        num(\n          engagement?.replies,\n          engagement?.comments,\n          engagement?.reply_count,\n          detail?.reply_count,\n          detail?.comments_count\n        )\n      ),\n      reposts_only: finalRepostsOnly,\n      shares: finalShares,\n      // Главное поле для LLM, Telegram, Gmail и дальнейшего хранения.\n      // Оно всегда содержит репосты + «поделиться».\n      reposts: finalRepostsCombined,\n    },\n  });\n  analyses.push(item.analysis || {});\n}\n\nconst batch = firstItem.batch_context || {};\nconst searchCredits = Number(batch.diagnostics?.search_credits_used || 0);\nconst commentCredits = Number(batch.diagnostics?.comment_credits_used || 0);\n\nreturn [{\n  json: {\n    ...batch,\n    posts,\n    analyses,\n    batch_summary: firstItem.batch_summary || {},\n    ai_stats: firstItem.ai_stats || {},\n    cost_diagnostics: {\n      search_requests: Number(batch.diagnostics?.search_requests || 0),\n      search_credits_used: searchCredits,\n      comment_requests: Number(batch.diagnostics?.comment_requests || 0),\n      comment_credits_used: commentCredits,\n      detail_requests: detailRequests,\n      detail_credits_used: detailCreditsUsed,\n      total_socialcrawl_credits_observed:\n        searchCredits + commentCredits + detailCreditsUsed,\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13632,
+        3968
+      ],
+      "id": "512432bb-9d26-47c7-822c-a57e24ca87f4",
+      "name": "05H · Собрать финальные посты с метриками"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json || {};\nconst batch = item.batch_context || {};\nconst searchCredits = Number(batch.diagnostics?.search_credits_used || 0);\nconst commentCredits = Number(batch.diagnostics?.comment_credits_used || 0);\nreturn [{\n  json: {\n    ...batch,\n    posts: [],\n    analyses: [],\n    batch_summary: item.batch_summary || {},\n    ai_stats: item.ai_stats || {},\n    cost_diagnostics: {\n      search_requests: Number(batch.diagnostics?.search_requests || 0),\n      search_credits_used: searchCredits,\n      comment_requests: Number(batch.diagnostics?.comment_requests || 0),\n      comment_credits_used: commentCredits,\n      detail_requests: 0,\n      detail_credits_used: 0,\n      total_socialcrawl_credits_observed: searchCredits + commentCredits,\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12672,
+        4240
+      ],
+      "id": "d3ad8240-5801-4658-a028-371f059256e9",
+      "name": "05Z · AI ничего не выбрал"
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $input.first().json || {};\nconst searchCredits = Number(batch.diagnostics?.search_credits_used || 0);\nconst commentCredits = Number(batch.diagnostics?.comment_credits_used || 0);\nreturn [{\n  json: {\n    ...batch,\n    candidates: undefined,\n    posts: [],\n    analyses: [],\n    batch_summary: {},\n    ai_stats: {\n      input_to_llm: 0,\n      analyses_returned: 0,\n      filtered_by_ai: 0,\n      filtered_by_relevance_ai: 0,\n      filtered_by_region_ai: 0,\n      allowed_unconfirmed_region_ai: 0,\n      filtered_missing_ai: 0,\n      capped_after_ai: 0,\n    },\n    cost_diagnostics: {\n      search_requests: Number(batch.diagnostics?.search_requests || 0),\n      search_credits_used: searchCredits,\n      comment_requests: Number(batch.diagnostics?.comment_requests || 0),\n      comment_credits_used: commentCredits,\n      detail_requests: 0,\n      detail_credits_used: 0,\n      total_socialcrawl_credits_observed: searchCredits + commentCredits,\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11856,
+        4816
+      ],
+      "id": "e7f9071e-7239-4ecf-aae0-ef8887b31a39",
+      "name": "99 · Ничего после дешёвых проверок"
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $input.first().json || {};\nconst now = new Date().toISOString();\nreturn (batch.posts || []).map((post) => ({\n  json: {\n    post_id: String(post.id),\n    first_seen_at: now,\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13872,
+        3968
+      ],
+      "id": "221ba34f-05b9-4083-a134-5a103e81fce5",
+      "name": "06A · Строки финальных post_id"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "49Nt2OxPioQaaQWE",
+          "mode": "list",
+          "cachedResultName": "task2_sber_mentions_prod",
+          "cachedResultUrl": "/projects/9hwtFM6S1qlPcgbn/datatables/49Nt2OxPioQaaQWE"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "post_id": "={{ $json.post_id }}",
+            "first_seen_at": "={{ $json.first_seen_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "post_id",
+              "displayName": "post_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "first_seen_at",
+              "displayName": "first_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        14112,
+        3968
+      ],
+      "id": "f5dc1b90-aab9-43de-952d-c760291b871e",
+      "name": "06B · Data Table — сохранить отправляемые post_id",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $('05H · Собрать финальные посты с метриками').first().json || {};\nreturn [{ json: batch }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14352,
+        3968
+      ],
+      "id": "9f091526-540c-4cd6-9359-928d985a4454",
+      "name": "06C · Вернуть финальную пачку после сохранения"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Все получатели задачи 2 и их темы «Упоминания».\nconst TELEGRAM_BOT_TOKEN = '8898358174:AAEf2t20QrofUpNsVGw8QbrYkdjsOzcNUPo';\n\nconst TELEGRAM_RECIPIENTS = [\n  { chat_id: '833303841',  message_thread_id: 471458 },\n  // { chat_id: '1164104101', message_thread_id: 755407 },\n  // { chat_id: '286809861',  message_thread_id: 469119 },\n  // { chat_id: '8195525898', message_thread_id: 25902 },\n  // { chat_id: '649373798',  message_thread_id: 589843 },\n  // { chat_id: '353571607',  message_thread_id: 570848 },\n  // { chat_id: '482851810',  message_thread_id: 1066218 },\n];\n\n\nconst token = String(TELEGRAM_BOT_TOKEN || '').trim();\nif (!token || token.startsWith('PASTE_')) return [];\n\nconst messages = $input.all().flatMap((item) =>\n  Array.isArray(item?.json?.telegram_messages)\n    ? item.json.telegram_messages\n    : []\n);\n\nreturn TELEGRAM_RECIPIENTS.flatMap((recipient) =>\n  messages.map((message) => ({\n    json: {\n      telegram_bot_token: token,\n      telegram_chat_id: recipient.chat_id,\n      telegram_thread_id: recipient.message_thread_id,\n      telegram_text: String(message?.text || ''),\n      telegram_keyboard: Array.isArray(message?.keyboard)\n        ? message.keyboard\n        : [],\n    },\n  }))\n);\n"
+      },
+      "id": "3c0d95c0-a04d-4208-a976-77b20bfc8266",
+      "name": "10 · Telegram — все получатели · тема Упоминания",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15120,
+        4304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { chat_id: $json.telegram_chat_id, message_thread_id: Number($json.telegram_thread_id), text: $json.telegram_text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: $json.telegram_keyboard || [] } } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "7cb4480e-90de-4d62-8449-e5b9f0d943bb",
+      "name": "11 · Telegram — отправить в темы Упоминания",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        15360,
+        4304
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 13 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "15 17 * * *"
+            }
+          ]
+        }
+      },
+      "id": "10d1f77c-fb4e-4cf1-b8bc-a07048c1c431",
+      "name": "00 · 13:00 и 17:15 ежедневно1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        8112,
+        4336
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.socialcrawl.dev/v1/threads/search?query=' + encodeURIComponent($json.search_query) + '&trim=false&limit=' + encodeURIComponent($json.search_limit || 50) + ($json.use_date_filter ? '&start_date=' + encodeURIComponent($json.api_start_date) + '&end_date=' + encodeURIComponent($json.api_end_date) : '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "4c162ad8-e0b9-4df6-a592-7ed752c0875f",
+      "name": "02 · SocialCrawl — поиск Threads1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8832,
+        4336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "qIYENmM0DlhSGP0s",
+          "name": "SocialCrawl"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst batch = $input.first().json;\nconst posts = batch.posts || [];\nconst state = $getWorkflowStaticData('global');\nconst dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Minsk', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(batch.window_end_iso));\nconst earlierMentions = batch.run_type === 'evening' && state.brandMentionMorning?.day_key === dayKey\n  ? (state.brandMentionMorning.records || [])\n  : [];\nconst prompt = [\n  'Проанализируй ВСЕ упоминания бренда ' + batch.brand + ' в Threads. Это social listening с приоритетом Беларуси.',\n  'Пост попал во вход по одному из двух правил: Сбер упомянут в самом посте (mention_source=post), либо пост обсуждает банк и Сбер упомянут в реальном комментарии (mention_source=comment). Каждый вход прошёл фильтр времени и локальных стоп-тем. Упоминания стран и городов в тексте, комментариях или профиле сами по себе локально не отбрасываются: определи по смыслу, о каком рынке и банке сам пост. UNKNOWN означает, что регион не подтверждён. Не меняй id.',\n  'ОБЯЗАТЕЛЬНЫЕ ФИЛЬТРЫ: ' + (batch.additional_stop_names || []).join('; ') + '.',\n  'Категория «упоминание не относится к Сбер Банку Беларусь» означает нерелевантное упоминание/другой банк или тему. Не трактуй её как автоматический отказ только из-за неизвестного региона: релевантность бренда и подтверждённость региона — отдельные решения.',\n  'Пост должен быть написан преимущественно на русском языке. Английский, иной иностранный язык и смешанный текст без достаточной доли русского отклоняй.',\n  'Любая нецензурная лексика, включая замаскированный русский или английский мат, означает mandatory_filter_passed=false независимо от контекста.',\n  'GEO-стоп означает, что предмет поста — именно Сбер, его продукт, услуга или банковский рынок России/Казахстана. Само упоминание России, Казахстана, другой страны, города, валюты или флага в тексте, комментарии, профиле автора, сравнении, новости или описании территории не является основанием для geo_stop_detected=true и не доказывает иностранный рынок. Если пост по смыслу о белорусском Сбер Банке, а другая страна лишь упомянута как контекст, направление, место действия или сравнение, пропусти GEO-фильтр. Например, новость о белорусском ОАО «Сбер Банк» и ЕРИП не становится российской только потому, что в ней сказано, что ЕРИП работает в России. Отклоняй только когда основная тема самого банковского упоминания — российский/казахстанский рынок; не делай вывод лишь по одному топониму или по местонахождению автора.',\n  'Спам-знакомства, ветки знакомств, предложения познакомиться, просьбы писать в комментариях и социальные призывы подписаться отклоняй. Упоминание банковской подписки СберПрайм само по себе спамом не является.',\n  'mandatory_filter_passed=true проверяет только язык, мат, применимый GEO-стоп и социальный спам. Не включай в mandatory_filter_passed уверенность в регионе/банке: её оцени отдельно в brand_market и is_belarus_sber, а окончательное решение о неизвестном регионе примет узел по переключателям конфига. Текущие значения: use_ru_filter=' + String(batch.use_ru_filter === true) + ', require_confirmed_sber_belarus=' + String(batch.require_confirmed_sber_belarus === true) + ', send_unconfirmed_region=' + String(batch.send_unconfirmed_region === true) + '.',\n  'Общее слово Сбер/Sber/Сбербанк само по себе не подтверждает белорусский рынок. Если регион неясен, верни brand_market=uncertain и is_belarus_sber=false, но не отклоняй только за неопределённость: узел после ИИ разрешит или отклонит такой пост по send_unconfirmed_region и require_confirmed_sber_belarus. Не угадывай рынок.',\n  'ОБЯЗАТЕЛЬНЫЙ ФИЛЬТР ТЕМ: ' + (batch.stop_topic_names || []).join('; ') + '.',\n  'Проверь смысл самого поста и, если mention_source=comment, смысл mention_comment_text и comment_samples. Учитывай словоформы, синонимы, эвфемизмы и скрытый контекст, а не только точные совпадения.',\n  'Если материал действительно относится хотя бы к одной запрещённой теме, верни is_allowed_topic=false, точное название категории в blocked_topic и краткую причину в safety_reason. Слово «война» в метафоре (например, «история целой войны» или «война с багами») не считай военной темой без смысла о реальных военных действиях, армиях, обстрелах, фронте или боевых событиях. Нейтральное обсуждение реальной запрещённой темы всё равно отклоняй.',\n  'Если запрещённых тем нет, верни is_allowed_topic=true и blocked_topic=\"\". Верни это решение для КАЖДОГО id.',\n  'Сначала определи is_relevant_brand_mention. false — если Сбер указан только как способ перевода, номер/карта/реквизиты для пожертвования, сбора денег, попрошайничества, продажи или оплаты, а про сам банк, его продукт, сервис, условия, работу, репутацию или действия ничего не сказано. true — если обсуждается сам Сбер или его услуги, приложение, карты, переводы, комиссии, бонусы, поддержка, безопасность, сбой, мошенничество с использованием бренда либо вопрос к банку. Сам факт fundraising_only_signal=true является подсказкой, но решение принимай по смыслу текста. Не отсекай жалобу на перевод или работу карты только из-за слов о деньгах.',\n  'Для нерелевантного поста поставь is_relevant_brand_mention=false и кратко заполни exclusion_reason. Такой пост не попадёт в уведомление.',\n  'Отдельно определи brand_market: belarus, russia, other или uncertain. is_belarus_sber=true можно ставить только когда речь именно об ОАО «Сбер Банк» в Беларуси.',\n  'Определи именно рынок банка, а не место, которое случайно упомянуто. Беларусь / country_code=BY / белорусский город / @sberbankby / sber-bank.by / БПС-Сбербанк / ОАО «Сбер Банк» — признаки белорусского рынка. Российские города, организации и продукты Сбера (например Мосбиржа, НРД, СберМобайл, Sber500) являются подсказками только если по смыслу сам пост посвящён российскому рынку или российскому Сберу. Отдельное слово «Россия/РФ», город, валюта или страна в биографии автора не достаточно. Также отличай рынок Казахстана и любой иной страны от случайных упоминаний. Общее слово «Сбер/Sber/Сбербанк» само по себе не подтверждает Беларусь.',\n  'Если признаки Беларуси и России равнозначны, противоречат друг другу или уверенность примерно 50 на 50, обязательно верни brand_market=uncertain и is_belarus_sber=false. Не угадывай рынок.',\n  'Если положительных признаков Беларуси нет и рынок нельзя надёжно определить, верни brand_market=uncertain и is_belarus_sber=false. Обязательно заполни brand_market_reason одной конкретной причиной. При USE_RU_FILTER=false эта классификация информационная и не блокирует уведомление.',\n  'Для каждого релевантного поста определи sentiment строго: negative, neutral или positive.',\n  'should_respond=true, если есть жалоба, риск репутации/мошенничества, вопрос, фактическая ошибка или возможность полезно помочь. Для пустой похвалы и простого информационного упоминания обычно false.',\n  'reaction_recommendation — развёрнутая рекомендация на 3–5 предложений. Это совет сотруднику, а не запрет и не обязательная команда. Объясни контекст, возможную пользу ответа, риск ответа или молчания, срочность и что стоит проверить перед решением. Используй формулировки «можно рассмотреть», «вероятно», «стоит проверить», а не безусловные приказы.',\n  'response_idea — фактический замысел ответа бренда, без выдуманных обещаний, признания вины и неподтверждённых деталей.',\n  'post_title — короткий информативный заголовок до 90 символов, не кликбейт.',\n  'comment_summary можно строить ТОЛЬКО по comment_samples. Если comment_samples пуст, напиши точно: «Тексты комментариев недоступны; известно только количество ответов: N». Никогда не выдумывай содержание комментариев.',\n  'mention_quote — короткая точная цитата/фрагмент, где упомянут бренд.',\n  'Для всей пачки создай batch_summary: общий вывод, до 5 топ-тем и до 5 практических действий для команды бренда.',\n  batch.run_type === 'evening' ? 'Это второй запуск дня. batch_summary должен учитывать и текущие посты, и компактные записи утреннего запуска из EARLIER_MORNING_MENTIONS. Не придумывай отсутствующие данные.' : 'Это первый запуск дня. batch_summary относится к текущему утреннему окну.',\n  'Верни только валидный JSON без Markdown по схеме:',\n  '{\"analyses\":[{\"id\":\"точный id\",\"mandatory_filter_passed\":true,\"mandatory_filter_reason\":\"\",\"content_language\":\"russian|english|other|mixed\",\"contains_profanity\":false,\"geo_stop_detected\":false,\"social_spam_detected\":false,\"is_allowed_topic\":true,\"blocked_topic\":\"\",\"safety_reason\":\"\",\"is_relevant_brand_mention\":true,\"exclusion_reason\":\"почему исключить или пустая строка\",\"brand_market\":\"belarus|russia|other|uncertain\",\"is_belarus_sber\":true,\"brand_market_reason\":\"конкретные признаки рынка\",\"post_title\":\"заголовок\",\"sentiment\":\"negative|neutral|positive\",\"sentiment_score\":0,\"summary\":\"суть\",\"mention_quote\":\"фрагмент\",\"should_respond\":true,\"response_priority\":\"high|medium|low\",\"reaction_recommendation\":\"развёрнутый необязательный совет\",\"response_idea\":\"идея ответа\",\"comment_summary\":\"только по реальным данным\",\"risk\":\"репутационный риск или нет\",\"key_topics\":[\"темы\"]}],\"batch_summary\":{\"overview\":\"общий вывод только по релевантным постам\",\"top_topics\":[\"до 5\"],\"recommended_actions\":[\"до 5\"]}}',\n  'sentiment_score: от -100 до 100. Никаких фактов вне входных данных.',\n  'ВХОДНЫЕ ПОСТЫ:',\n  JSON.stringify(posts),\n  'EARLIER_MORNING_MENTIONS:',\n  JSON.stringify(earlierMentions),\n];\nreturn [{ json: { ...batch, day_key: dayKey, earlier_mentions: earlierMentions, agent_prompt: prompt.join('\\n') } }];\n"
+      },
+      "id": "91f3df81-e45b-478c-ab89-74bc31e1b0dc",
+      "name": "04 · Задание AI-аналитику2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11712,
+        4096
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_prompt }}",
+        "options": {
+          "systemMessage": "Ты senior-аналитик репутации бренда и social listening по Беларуси. Анализируй тональность, репутационный риск и необходимость ответа. Используй только факты текущей пачки. Не выдумывай содержание комментариев, географию или метрики. Политика и 18+ запрещены. Возвращай только валидный JSON по схеме пользователя.",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false,
+          "autoSaveHighlightedData": false,
+          "enableStreaming": false
+        }
+      },
+      "id": "58d9b31d-ab39-4f9c-a94a-4c1f71583d0e",
+      "name": "05 · AI Agent — анализ упоминаний2",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        11952,
+        4096
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-flash",
+        "options": {}
+      },
+      "id": "2292da96-62a2-4a56-9d73-748f40c7287d",
+      "name": "DeepSeek Chat Model — анализ упоминаний2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        11952,
+        4416
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "7vKt5aSqzGtaiHwT",
+          "name": "DeepSeek DUKD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst prepared = $input.first().json || {};\nconst batch = prepared;\nconst posts = Array.isArray(prepared.posts) ? prepared.posts : [];\nconst analyses = new Map((Array.isArray(prepared.analyses) ? prepared.analyses : []).map((value) => [String(value.id), value]));\nconst summary = prepared.batch_summary || {};\nconst esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst nl = (value) => esc(value).replace(/\\n/g, '<br>');\nconst fmt = (value) => new Intl.NumberFormat('ru-RU').format(Math.round(Number(value) || 0));\nconst metricKnown = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));\nconst fmtMetric = (value) => metricKnown(value) ? fmt(value) : 'нет данных';\nconst shorten = (value, limit) => String(value || '').length > limit ? String(value).slice(0, limit - 1) + '…' : String(value || '');\nconst localTime = (iso) => {\n  try { return new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); }\n  catch (_) { return String(iso || 'нет данных'); }\n};\nconst sentimentMeta = {\n  negative: { label: 'Негативно', icon: '🔴', color: '#d7263d', bg: '#fff1f3' },\n  neutral: { label: 'Нейтрально', icon: '⚪', color: '#667085', bg: '#f2f4f7' },\n  positive: { label: 'Позитивно', icon: '🟢', color: '#18864b', bg: '#edf7f0' },\n};\nconst baseUrl = 'https://newsaccount.app.n8n.cloud';\nconst secret = 'local-brand-mentions-agent';\nconst cards = [];\nconst state = $getWorkflowStaticData('global');\nconst nowMs = Date.now();\nlet filteredByAi = Number(prepared.ai_stats?.filtered_by_ai || 0);\nlet filteredByRegionAi = Number(prepared.ai_stats?.filtered_by_region_ai || 0);\nlet filteredByRelevanceAi = Number(prepared.ai_stats?.filtered_by_relevance_ai || 0);\n\nfor (const post of posts) {\n  const a = analyses.get(String(post.id)) || {\n    id: post.id, is_relevant_brand_mention: true, exclusion_reason: '', brand_market: 'uncertain', is_belarus_sber: false, brand_market_reason: 'AI не вернул классификацию рынка', post_title: 'Упоминание ' + batch.brand, sentiment: 'neutral', sentiment_score: 0,\n    summary: shorten(post.text, 240), mention_quote: post.mention_matches, should_respond: false,\n    response_priority: 'low', reaction_recommendation: 'Проверить вручную: AI не вернул анализ.',\n    response_idea: 'Уточнить контекст и при необходимости помочь.',\n    comment_summary: post.comment_samples?.length ? post.comment_samples.join('; ') : 'Тексты комментариев недоступны; известно только количество ответов: ' + fmt(post.metrics?.replies),\n    risk: 'Требуется ручная проверка', key_topics: [],\n  };\n  const relevanceValue = String(a.is_relevant_brand_mention ?? 'true').trim().toLowerCase();\n  if (a.is_relevant_brand_mention === false || ['false', '0', 'no', 'нет'].includes(relevanceValue)) {\n    filteredByAi++;\n    filteredByRelevanceAi++;\n    continue;\n  }\n\n  const market = String(a.brand_market || '').trim().toLowerCase();\n  const belarusValue = String(a.is_belarus_sber ?? '').trim().toLowerCase();\n  const aiConfirmedBelarus = a.is_belarus_sber === true\n    || ['true', '1', 'yes', 'да'].includes(belarusValue)\n    || ['belarus', 'by', 'sber_belarus'].includes(market);\n  const needsAiRegionDecision = batch.use_ru_filter === true\n    && String(post.region || 'UNKNOWN').toUpperCase() === 'UNKNOWN';\n  const aiUncertainRegion = ['uncertain', 'unknown', 'undetermined'].includes(\n    market\n  );\n  const canSendUnconfirmedRegion = needsAiRegionDecision\n    && aiUncertainRegion\n    && batch.send_unconfirmed_region === true;\n  if (\n    needsAiRegionDecision\n    && !aiConfirmedBelarus\n    && !canSendUnconfirmedRegion\n  ) {\n    filteredByAi++;\n    filteredByRegionAi++;\n    continue;\n  }\n  const effectiveRegion = aiConfirmedBelarus && needsAiRegionDecision\n    ? 'BY · определено AI'\n    : canSendUnconfirmedRegion\n      ? 'UNKNOWN · регион не подтверждён AI (50/50)'\n      : String(post.region || 'UNKNOWN');\n  const effectiveRegionEvidence = needsAiRegionDecision\n    ? String(\n      a.brand_market_reason\n      || (canSendUnconfirmedRegion\n        ? 'LLM не смогла надёжно определить рынок'\n        : 'LLM определила упоминание как Сбер Банк в Беларуси')\n    )\n    : String(post.region_evidence || post.belarus_evidence || a.brand_market_reason || 'нет данных');\n\n  const sentiment = ['negative', 'neutral', 'positive'].includes(a.sentiment) ? a.sentiment : 'neutral';\n  const sm = sentimentMeta[sentiment];\n  const payloadData = {\n    v: 2, id: post.id, u: post.url, b: batch.brand, t: shorten(post.text, 200), au: post.author?.username,\n    h: shorten(a.post_title, 70), s: sentiment, sm: shorten(a.summary, 90), rr: shorten(a.reaction_recommendation, 300),\n    ri: shorten(a.response_idea, 250), ts: nowMs,\n  };\n  const payload = Buffer.from(JSON.stringify(payloadData), 'utf8').toString('base64url');\n  const actionUrl = baseUrl + '/webhook/brand-mention-ai-reply-v8?payload=' + encodeURIComponent(payload) + '&token=' + encodeURIComponent(secret);\n  // Telegram callback_data ограничен 64 байтами. Контекст агент возьмёт\n  // из самой информативной Telegram-карточки, поэтому здесь нужен короткий ID.\n  const callbackKey = Buffer.from(String(post.id), 'utf8').toString('base64url').slice(0, 44);\n  const telegramCallbackData = 'brand_reply:' + callbackKey;\n  const metrics = post.metrics || {};\n  const mentionSource = post.mention_source === 'comment' ? 'Сбер в комментарии к банковскому посту' : 'Сбер в тексте поста';\n  // Для упоминания из комментария показываем текст именно того комментария,\n  // URL которого сохранил узел 03. LLM не выбирает и не придумывает ссылку.\n  const mentionFragment = post.mention_source === 'comment'\n    ? String(post.mention_comment_text || a.mention_quote || post.mention_matches || '')\n    : String(a.mention_quote || post.mention_matches || '');\n  const hasMentionCommentLink = post.mention_source === 'comment'\n    && Boolean(String(post.mention_comment_url || '').trim());\n  const responseLabel = a.should_respond ? 'СОВЕТ: РАССМОТРЕТЬ ОТВЕТ' : 'СОВЕТ: МОЖНО НЕ ОТВЕЧАТЬ';\n  const responseColor = a.should_respond ? '#b42318' : '#475467';\n  const responseBg = a.should_respond ? '#fff1f3' : '#f2f4f7';\n  const titleLink = post.url ? '<a href=\"' + esc(post.url) + '\" style=\"color:#17212b;text-decoration:underline\">' + esc(a.post_title) + '</a>' : esc(a.post_title);\n  const commentLabel = post.comment_samples?.length ? esc(a.comment_summary) : 'Тексты комментариев SocialCrawl для Threads не вернул. Доступно только количество ответов: <b>' + fmt(metrics.replies) + '</b>.';\n  const emailCard = [\n    '<div style=\"margin:22px 0;background:#fff;border:1px solid #d7dee8;border-left:7px solid ' + sm.color + ';border-radius:14px;overflow:hidden;box-shadow:0 3px 12px rgba(16,24,40,.06)\">',\n    '<div style=\"padding:20px 22px;background:' + sm.bg + '\"><div style=\"font-size:13px;color:' + sm.color + ';font-weight:700;text-transform:uppercase\">' + sm.icon + ' ' + sm.label + ' · ' + esc(String(a.response_priority || 'low').toUpperCase()) + '</div>',\n    '<div style=\"font-size:22px;font-weight:700;margin-top:8px\">' + titleLink + '</div></div>',\n    '<div style=\"padding:20px 22px;line-height:1.58\">',\n\n    '<div style=\"margin-bottom:16px;padding:15px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e4e7ec\">',\n    '<div style=\"font-size:13px;font-weight:700;color:#344054;margin-bottom:9px\">👤 АВТОР И КОНТЕКСТ</div>',\n    '<b>Автор:</b> @' + esc(post.author?.username) + ' · ' + esc(post.author?.name) + (post.author?.verified ? ' ✅' : '') + '<br>',\n    '<b>Опубликовано:</b> ' + esc(localTime(post.published_at)) + ' (Минск)<br>',\n    '<b>Регион:</b> ' + esc(effectiveRegion) + ' · ' + esc(shorten(effectiveRegionEvidence, 320)) + '<br>',\n    '<b>Источник:</b> ' + esc(mentionSource) + '<br>',\n    '<b>Фрагмент упоминания:</b> “' + esc(mentionFragment) + '”' +\n      (post.mention_source === 'comment'\n        ? (hasMentionCommentLink\n          ? '<br><b>Ссылка на комментарий:</b> <a href=\"' + esc(post.mention_comment_url) + '\">открыть комментарий с упоминанием</a>'\n          : '<br><b>Ссылка на комментарий:</b> нет')\n        : '') +\n      '</div>',\n\n    post.mention_source === 'comment'\n      ? '<div style=\"margin-bottom:16px\"><div style=\"font-size:13px;font-weight:700;color:#175cd3;margin-bottom:9px\">💬 КОММЕНТАРИЙ С УПОМИНАНИЕМ</div><div style=\"background:#eff8ff;border-left:4px solid #2e90fa;padding:15px 17px;border-radius:9px\">' + nl(shorten(post.mention_comment_text || mentionFragment, 900)) + '</div></div>'\n      : '',\n    '<div style=\"margin-bottom:16px\"><div style=\"font-size:13px;font-weight:700;color:#344054;margin-bottom:9px\">📝 ИСХОДНЫЙ ПОСТ</div>',\n    '<div style=\"background:#fff7ed;border-left:4px solid #f79009;padding:15px 17px;border-radius:9px\">' + (post.text ? nl(shorten(post.text, 1200)) : 'Текст исходного поста недоступен') + '</div></div>',\n\n    '<div style=\"font-size:13px;font-weight:700;color:#344054;margin-bottom:9px\">📊 МЕТРИКИ</div>',\n    '<table role=\"presentation\" style=\"width:100%;border-collapse:collapse;text-align:center;margin:0 0 16px\"><tr>',\n    '<td style=\"background:#f8fafc;border:1px solid #e1e5ea;padding:11px\"><b>👁 ' + fmtMetric(metrics.views) + '</b><br><span style=\"font-size:12px;color:#667085\">просмотры</span></td>',\n    '<td style=\"background:#f8fafc;border:1px solid #e1e5ea;padding:11px\"><b>❤️ ' + fmt(metrics.likes) + '</b><br><span style=\"font-size:12px;color:#667085\">лайки</span></td>',\n    '<td style=\"background:#f8fafc;border:1px solid #e1e5ea;padding:11px\"><b>💬 ' + fmt(metrics.replies) + '</b><br><span style=\"font-size:12px;color:#667085\">ответы</span></td>',\n    '<td style=\"background:#f8fafc;border:1px solid #e1e5ea;padding:11px\"><b>🔁 ' + fmt(metrics.reposts) + '</b><br><span style=\"font-size:12px;color:#667085\">репосты</span></td>',\n    '</tr></table>',\n\n    '<div style=\"margin-bottom:16px;padding:15px 16px;background:#eef4ff;border-left:4px solid #6172f3;border-radius:9px\">',\n    '<div style=\"font-size:13px;font-weight:700;color:#3538cd;margin-bottom:9px\">🧠 АНАЛИЗ</div>',\n    '<b>Суть:</b> ' + esc(a.summary) + '<br><br><b>Риск:</b> ' + esc(a.risk) + '</div>',\n\n    '<div style=\"margin-bottom:16px;padding:15px 16px;background:#f8fafc;border:1px solid #e4e7ec;border-radius:9px\">',\n    '<div style=\"font-size:13px;font-weight:700;color:#344054;margin-bottom:9px\">💬 КОММЕНТАРИИ</div>' + commentLabel + '</div>',\n\n    '<div style=\"margin-bottom:16px;padding:15px 16px;background:' + responseBg + ';border-left:4px solid ' + responseColor + ';border-radius:9px\">',\n    '<div style=\"font-size:13px;font-weight:700;color:' + responseColor + ';margin-bottom:9px\">🎯 РЕКОМЕНДАЦИЯ АГЕНТА · ' + responseLabel + '</div>',\n    esc(a.reaction_recommendation) + '<div style=\"margin-top:10px;font-size:12px;color:#667085\">Это рекомендация, а не запрет. Решение принимает сотрудник; кнопка ниже в любом случае подготовит черновик ответа.</div></div>',\n\n    '<div style=\"margin-bottom:18px;padding:15px 16px;background:#ecfdf3;border-left:4px solid #12b76a;border-radius:9px\">',\n    '<div style=\"font-size:13px;font-weight:700;color:#027a48;margin-bottom:9px\">💡 ИДЕЯ ОТВЕТА</div>' + esc(a.response_idea) + '</div>',\n\n    '<table role=\"presentation\"><tr><td><a href=\"' + esc(actionUrl) + '\" style=\"display:inline-block;background:#246bfd;color:#fff;text-decoration:none;padding:13px 18px;border-radius:8px;font-weight:700\">✨ Подготовить AI-ответ</a></td></tr></table>',\n    '</div></div>',\n  ].join('');\n  const telegramTitle = post.url ? '<a href=\"' + esc(post.url) + '\">' + esc(a.post_title) + '</a>' : esc(a.post_title);\n  const tgLines = [\n    sm.icon + ' <b>' + telegramTitle + '</b>',\n    '<i>' + sm.label + ' · ' + esc(String(a.response_priority || 'low').toUpperCase()) + '</i>',\n    '',\n    '👤 <b>АВТОР И КОНТЕКСТ</b>',\n    '<b>Автор:</b> @' + esc(post.author?.username) + ' · ' + esc(post.author?.name),\n    '<b>Опубликовано:</b> ' + esc(localTime(post.published_at)) + ' (Минск)',\n    '<b>Регион:</b> ' + esc(effectiveRegion) + ' · ' + esc(shorten(effectiveRegionEvidence, 260)),\n    '<b>Источник:</b> ' + esc(mentionSource),\n    '<b>Фрагмент:</b> “' + esc(shorten(mentionFragment, 240)) + '”',\n    post.mention_source === 'comment'\n      ? (hasMentionCommentLink\n        ? '💬 <a href=\"' + esc(post.mention_comment_url) + '\">Открыть комментарий с упоминанием</a>'\n        : '💬 <b>Ссылка на комментарий:</b> нет')\n      : '',\n    '',\n    post.mention_source === 'comment' ? '💬 <b>КОММЕНТАРИЙ С УПОМИНАНИЕМ</b>' : '',\n    post.mention_source === 'comment' ? '<blockquote>' + esc(shorten(post.mention_comment_text || mentionFragment, 700)) + '</blockquote>' : '',\n    '📝 <b>ИСХОДНЫЙ ПОСТ</b>',\n    post.text ? '<blockquote>' + esc(shorten(post.text, 900)) + '</blockquote>' : '<i>Текст исходного поста недоступен</i>',\n    '',\n    '📊 <b>МЕТРИКИ</b>',\n    '👁 ' + fmtMetric(metrics.views) + '  ❤️ ' + fmt(metrics.likes) + '  💬 ' + fmt(metrics.replies) + '  🔁 ' + fmt(metrics.reposts),\n    '',\n    '🧠 <b>АНАЛИЗ</b>',\n    '<b>Суть:</b> ' + esc(shorten(a.summary, 350)),\n    '<b>Риск:</b> ' + esc(shorten(a.risk, 260)),\n    '',\n    '💬 <b>КОММЕНТАРИИ</b>',\n    post.comment_samples?.length ? esc(shorten(a.comment_summary, 350)) : 'Тексты недоступны, ответов: ' + fmt(metrics.replies),\n    '',\n    '🎯 <b>РЕКОМЕНДАЦИЯ АГЕНТА · ' + responseLabel + '</b>',\n    esc(shorten(a.reaction_recommendation, 500)),\n    '<i>Это совет, а не запрет. Кнопка ниже всегда подготовит черновик ответа.</i>',\n    '',\n    '💡 <b>ИДЕЯ ОТВЕТА</b>',\n    esc(shorten(a.response_idea, 350)),\n    '',\n    post.url ? '🔗 <a href=\"' + esc(post.url) + '\">Открыть исходный пост</a>' : '',\n  ].filter(Boolean).join('\\n');\n  cards.push({ post, analysis: a, sentiment, emailCard, telegram: { text: tgLines, keyboard: [[{ text: '✨ Подготовить AI-ответ', callback_data: telegramCallbackData }]] } });\n}\n\nconst counts = { negative: 0, neutral: 0, positive: 0 };\nlet totalReach = 0;\nlet totalReachKnown = 0;\nlet mustRespond = 0;\nfor (const card of cards) {\n  counts[card.sentiment]++;\n  if (metricKnown(card.post.metrics?.views)) { totalReach += Number(card.post.metrics.views); totalReachKnown++; }\n  if (card.analysis.should_respond) mustRespond++;\n}\nconst currentRecords = cards.map((card) => ({\n  id: card.post.id,\n  title: String(card.analysis.post_title || ''),\n  sentiment: card.sentiment,\n  should_respond: Boolean(card.analysis.should_respond),\n  summary: String(card.analysis.summary || ''),\n  key_topics: Array.isArray(card.analysis.key_topics) ? card.analysis.key_topics : [],\n  metrics: card.post.metrics || {},\n}));\nif (batch.run_type === 'morning') {\n  state.brandMentionMorning = { day_key: batch.day_key, records: currentRecords, saved_at: nowMs };\n}\nconst dailyRecords = batch.run_type === 'evening'\n  ? [...(Array.isArray(batch.earlier_mentions) ? batch.earlier_mentions : []), ...currentRecords]\n  : currentRecords;\nconst dailyCounts = { negative: 0, neutral: 0, positive: 0 };\nlet dailyReach = 0;\nlet dailyReachKnown = 0;\nlet dailyMustRespond = 0;\nfor (const record of dailyRecords) {\n  const tone = ['negative', 'neutral', 'positive'].includes(record.sentiment) ? record.sentiment : 'neutral';\n  dailyCounts[tone]++;\n  if (metricKnown(record.metrics?.views)) { dailyReach += Number(record.metrics.views); dailyReachKnown++; }\n  if (record.should_respond) dailyMustRespond++;\n}\nif (batch.run_type === 'evening' && state.brandMentionMorning?.day_key === batch.day_key) delete state.brandMentionMorning;\nconst period = localTime(batch.window_start_iso) + ' — ' + localTime(batch.window_end_iso);\nconst header = [\n  '<div style=\"background:#eef2f6;padding:24px;font-family:Arial,sans-serif;color:#17212b\"><div style=\"max-width:780px;margin:auto\">',\n  '<div style=\"background:#17212b;color:#fff;padding:24px;border-radius:14px\"><div style=\"font-size:13px;opacity:.75\">THREADS · БЕЛАРУСЬ / UNKNOWN · ' + esc(batch.run_label.toUpperCase()) + '</div>',\n  '<div style=\"font-size:28px;font-weight:700;margin-top:7px\">Лента упоминаний «' + esc(batch.brand) + '»</div>',\n  '<div style=\"margin-top:12px\">Период: ' + esc(period) + ' (Минск)</div>',\n  '<div style=\"margin-top:12px\">Релевантных: <b>' + cards.length + '</b> · отсеяно AI: <b>' + filteredByAi + '</b> (не Беларусь: <b>' + filteredByRegionAi + '</b>, нерелевантные: <b>' + filteredByRelevanceAi + '</b>) · 🔴 ' + counts.negative + ' · ⚪ ' + counts.neutral + ' · 🟢 ' + counts.positive + ' · Совет рассмотреть ответ: <b>' + mustRespond + '</b> · Охват: <b>' + (totalReachKnown ? fmt(totalReach) : 'нет данных') + '</b></div>',\n  '</div>',\n].join('');\nlet eveningSummary = '';\nif (batch.run_type === 'evening') {\n  if (dailyRecords.length === 0) {\n    eveningSummary = '<div style=\"margin:20px 0;background:#fff7e6;border:1px solid #f3c969;border-radius:12px;padding:20px\"><h2 style=\"margin-top:0\">Итог дня в 17:15</h2><p><b>За день:</b> 0 упоминаний · охват нет данных · 🔴 0 · ⚪ 0 · 🟢 0 · реагировать 0</p></div>';\n  } else {\n    const topics = Array.isArray(summary.top_topics) ? summary.top_topics : [];\n    const actions = Array.isArray(summary.recommended_actions) ? summary.recommended_actions : [];\n    eveningSummary = '<div style=\"margin:20px 0;background:#fff7e6;border:1px solid #f3c969;border-radius:12px;padding:20px\"><h2 style=\"margin-top:0\">Итог дня в 17:15</h2><p><b>За день:</b> ' + dailyRecords.length + ' упоминаний · охват ' + (dailyReachKnown ? fmt(dailyReach) : 'нет данных') + ' · 🔴 ' + dailyCounts.negative + ' · ⚪ ' + dailyCounts.neutral + ' · 🟢 ' + dailyCounts.positive + ' · реагировать ' + dailyMustRespond + '</p><p>' + esc(summary.overview || 'Сводка сформирована по отправленным упоминаниям.') + '</p><b>Топ тем:</b><ol>' + topics.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol><b>Рекомендованные действия:</b><ol>' + actions.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol></div>';\n  }\n}\nconst emailHtml = header + eveningSummary + cards.map((x) => x.emailCard).join('') + '<div style=\"font-size:12px;color:#667085;margin-top:20px\">Тексты комментариев показываются только если источник реально вернул их. Workflow ничего не придумывает.</div></div></div>';\nconst telegramMessages = [{\n  text: '<b>Лента упоминаний «' + esc(batch.brand) + '» · ' + esc(batch.run_label) + '</b>\\nПериод: ' + esc(period) + '\\nРелевантных: <b>' + cards.length + '</b> · отсеяно AI: <b>' + filteredByAi + '</b> (не Беларусь: <b>' + filteredByRegionAi + '</b>, нерелевантные: <b>' + filteredByRelevanceAi + '</b>) · 🔴 ' + counts.negative + ' · ⚪ ' + counts.neutral + ' · 🟢 ' + counts.positive + '\\nОхват: <b>' + (totalReachKnown ? fmt(totalReach) : 'нет данных') + '</b> · Реагировать: <b>' + mustRespond + '</b>',\n  keyboard: [],\n}];\nif (batch.run_type === 'evening') {\n  const dayResultText = dailyRecords.length === 0\n    ? '<b>Итог дня</b>\\nЗа день: <b>0</b> упоминаний · охват <b>нет данных</b>\\n🔴 0 · ⚪ 0 · 🟢 0 · реагировать 0'\n    : '<b>Итог дня</b>\\nЗа день: <b>' + dailyRecords.length + '</b> упоминаний · охват <b>' + (dailyReachKnown ? fmt(dailyReach) : 'нет данных') + '</b>\\n🔴 ' + dailyCounts.negative + ' · ⚪ ' + dailyCounts.neutral + ' · 🟢 ' + dailyCounts.positive + ' · реагировать ' + dailyMustRespond + '\\n\\n' + esc(shorten(summary.overview || 'Сводка по отправленным упоминаниям.', 1000)) + '\\n\\n<b>Топ тем:</b>\\n' + (summary.top_topics || []).slice(0, 5).map((x, i) => (i + 1) + '. ' + esc(shorten(x, 220))).join('\\n') + '\\n\\n<b>Что сделать:</b>\\n' + (summary.recommended_actions || []).slice(0, 5).map((x, i) => (i + 1) + '. ' + esc(shorten(x, 220))).join('\\n');\n  telegramMessages.push({ text: dayResultText, keyboard: [] });\n}\ntelegramMessages.push(...cards.map((x) => x.telegram));\nreturn [{ json: {\n  email_subject: batch.brand + ' · ' + cards.length + ' упоминаний · ' + batch.run_label,\n  email_html: emailHtml,\n  telegram_messages: telegramMessages,\n  posts_count: cards.length,\n  filtered_by_ai: filteredByAi,\n  filtered_by_region_ai: filteredByRegionAi,\n  filtered_by_relevance_ai: filteredByRelevanceAi,\n  counts,\n  total_reach: totalReachKnown ? totalReach : null,\n  posts_with_known_views: totalReachKnown,\n  must_respond: mustRespond,\n  cost_diagnostics: prepared.cost_diagnostics || {},\n} }];"
+      },
+      "id": "d8e4ece6-010f-4375-ae86-a088da10457c",
+      "name": "06 · Красивые Email + Telegram2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14704,
+        4224
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "Brand Radar <pjstar199@gmail.com>",
+        "toEmail": "={{ [\n  'kolia20yandexru@gmail.com',\n].join(', ') }}",
+        "subject": "={{ $json.email_subject }}",
+        "html": "={{ $json.email_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "22fc6142-d85f-4ac6-8846-5f92e431e528",
+      "name": "07 · Gmail — лента упоминаний2",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        15120,
+        4048
+      ],
+      "webhookId": "39620cbc-f7af-400b-a1aa-07df3e21a4fb",
+      "credentials": {
+        "smtp": {
+          "id": "VcmbIedir5HHr16D",
+          "name": "SMTP account for threads"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ============================================================\n// 1. НАСТРОЙКИ\n// ============================================================\n\n// Вставь только токен бота.\n// Пример: 123456789:AAExampleToken\nconst TELEGRAM_BOT_TOKEN = '8898358174:AAEf2t20QrofUpNsVGw8QbrYkdjsOzcNUPo'.trim();\n\n\nif (!TELEGRAM_BOT_TOKEN) {\n  throw new Error('Не указан Telegram Bot Token.');\n}\n\nconst users = [\n  {\n    chat_id: 833303841,\n    topics: {\n      'Упоминания': 471458,\n      'Всплеск веток': 471457,\n      'Всплеск автора': 484412,\n      'Тренды': 484411,\n      'Контент-план': 471459,\n      'Отчёт': 471460,\n    },\n  },\n  {\n    chat_id: 1164104101,\n    topics: {\n      'Упоминания': 755407,\n      'Всплеск веток': 755406,\n      'Всплеск автора': 767716,\n      'Тренды': 767714,\n      'Контент-план': 755408,\n      'Отчёт': 755409,\n    },\n  },\n  {\n    chat_id: 286809861,\n    topics: {\n      'Упоминания': 469119,\n      'Всплеск веток': 469118,\n      'Всплеск автора': 477159,\n      'Тренды': 477160,\n      'Контент-план': 469120,\n      'Отчёт': 469121,\n    },\n  },\n  {\n    chat_id: 8195525898,\n    topics: {\n      'Упоминания': 25902,\n      'Всплеск веток': 25900,\n      'Всплеск автора': 29369,\n      'Тренды': 29368,\n      'Контент-план': 25903,\n      'Отчёт': 25904,\n    },\n  },\n  {\n    chat_id: 649373798,\n    topics: {\n      'Упоминания': 589843,\n      'Всплеск веток': 589842,\n      'Всплеск автора': 595243,\n      'Тренды': 595242,\n      'Контент-план': 589844,\n      'Отчёт': 589845,\n    },\n  },\n  {\n    chat_id: 353571607,\n    topics: {\n      'Упоминания': 570848,\n      'Всплеск веток': 570844,\n      'Всплеск автора': 579974,\n      'Тренды': 579972,\n      'Контент-план': 570849,\n      'Отчёт': 570850,\n    },\n  },\n  {\n    chat_id: 482851810,\n    topics: {\n      'Упоминания': 1066218,\n      'Всплеск веток': 1066214,\n      'Всплеск автора': 1066756,\n      'Тренды': 1066754,\n      'Контент-план': 1066215,\n      'Отчёт': 1066216,\n    },\n  },\n];\n\nconst output = [];\n\nfor (const user of users) {\n  for (const [topicName, threadId] of Object.entries(user.topics)) {\n    output.push({\n      json: {\n        chat_id: user.chat_id,\n        topic_name: topicName,\n        message_thread_id: threadId,\n\n        api_url:\n          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendChatAction`,\n\n        request_body: {\n          chat_id: user.chat_id,\n          message_thread_id: threadId,\n          action: 'typing',\n        },\n      },\n    });\n  }\n}\n\nreturn output;"
+      },
+      "id": "f1def439-0a40-49b5-b70c-0a4a9b19f170",
+      "name": "91 · Настройки setWebhook1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9648,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.api_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.request_body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "17761c66-5e6a-4a53-9453-3fada5933441",
+      "name": "92 · Telegram — setWebhook1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        9904,
+        1808
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "00 · Запустить тест вручную": {
+      "main": [
+        [
+          {
+            "node": "01 · Настройка бренда и окна",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01 · Настройка бренда и окна": {
+      "main": [
+        [
+          {
+            "node": "02 · MOCK SocialCrawl — много постов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 · MOCK SocialCrawl — много постов": {
+      "main": [
+        [
+          {
+            "node": "03 · Только бренд + Беларусь + окно",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 · Только бренд + Беларусь + окно": {
+      "main": [
+        [
+          {
+            "node": "04 · Задание AI-аналитику",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 · Задание AI-аналитику": {
+      "main": [
+        [
+          {
+            "node": "05 · AI Agent — анализ упоминаний",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory — brand listening": {
+      "ai_memory": [
+        [
+          {
+            "node": "05 · AI Agent — анализ упоминаний",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 · AI Agent — анализ упоминаний": {
+      "main": [
+        [
+          {
+            "node": "06 · Красивые Email + Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 · Красивые Email + Telegram": {
+      "main": [
+        [
+          {
+            "node": "07 · Gmail — лента упоминаний",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "10 · Telegram — настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 · Telegram — настройки": {
+      "main": [
+        [
+          {
+            "node": "11 · Telegram — отправить ленту",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model — анализ упоминаний": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "05 · AI Agent — анализ упоминаний",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "91 · Настройки setWebhook": {
+      "main": [
+        [
+          {
+            "node": "92 · Telegram — setWebhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "00B · Воскресенье 23:55 — очистить дедупликацию1": {
+      "main": [
+        [
+          {
+            "node": "00C · Data Table — удалить все строки недели1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01 · ГЛАВНЫЙ КОНФИГ · переключатели": {
+      "main": [
+        [
+          {
+            "node": "01A · Подготовить поисковые запросы",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01A · Подготовить поисковые запросы": {
+      "main": [
+        [
+          {
+            "node": "02 · SocialCrawl — поиск Threads1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02A · Дешёвые проверки до доп. запросов": {
+      "main": [
+        [
+          {
+            "node": "02B · Data Table — получить отправленные",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02B · Data Table — получить отправленные": {
+      "main": [
+        [
+          {
+            "node": "02C · Убрать уже отправленные",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02C · Убрать уже отправленные": {
+      "main": [
+        [
+          {
+            "node": "02D · Есть новые кандидаты?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02D · Есть новые кандидаты?": {
+      "main": [
+        [
+          {
+            "node": "02E · Развернуть новых кандидатов",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "99 · Ничего после дешёвых проверок",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02E · Развернуть новых кандидатов": {
+      "main": [
+        [
+          {
+            "node": "03A · Нужны комментарии?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03A · Нужны комментарии?": {
+      "main": [
+        [
+          {
+            "node": "03B · SocialCrawl — комментарии только после фильтров",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "03D · Без запроса комментариев",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03B · SocialCrawl — комментарии только после фильтров": {
+      "main": [
+        [
+          {
+            "node": "03C · Присоединить комментарии",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03C · Присоединить комментарии": {
+      "main": [
+        [
+          {
+            "node": "03E · Объединить после комментариев",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03D · Без запроса комментариев": {
+      "main": [
+        [
+          {
+            "node": "03E · Объединить после комментариев",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "03E · Объединить после комментариев": {
+      "main": [
+        [
+          {
+            "node": "03F · Проверить прямое упоминание или комментарий",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03F · Проверить прямое упоминание или комментарий": {
+      "main": [
+        [
+          {
+            "node": "03G · Есть посты перед LLM?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03G · Есть посты перед LLM?": {
+      "main": [
+        [
+          {
+            "node": "04 · Задание AI-аналитику2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "99 · Ничего после дешёвых проверок",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05A · Разобрать AI и выбрать финальные": {
+      "main": [
+        [
+          {
+            "node": "05B · AI выбрал хотя бы один пост?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05B · AI выбрал хотя бы один пост?": {
+      "main": [
+        [
+          {
+            "node": "05C · Нужна полная карточка финального поста?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05Z · AI ничего не выбрал",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05C · Нужна полная карточка финального поста?": {
+      "main": [
+        [
+          {
+            "node": "05D · SocialCrawl — полная карточка только финальных",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05F · Без полной карточки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05D · SocialCrawl — полная карточка только финальных": {
+      "main": [
+        [
+          {
+            "node": "05E · Присоединить полную карточку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05E · Присоединить полную карточку": {
+      "main": [
+        [
+          {
+            "node": "05G · Объединить после полной карточки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05F · Без полной карточки": {
+      "main": [
+        [
+          {
+            "node": "05G · Объединить после полной карточки",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "05G · Объединить после полной карточки": {
+      "main": [
+        [
+          {
+            "node": "05H · Собрать финальные посты с метриками",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05H · Собрать финальные посты с метриками": {
+      "main": [
+        [
+          {
+            "node": "06A · Строки финальных post_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05Z · AI ничего не выбрал": {
+      "main": [
+        [
+          {
+            "node": "06 · Красивые Email + Telegram2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "99 · Ничего после дешёвых проверок": {
+      "main": [
+        [
+          {
+            "node": "06 · Красивые Email + Telegram2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06A · Строки финальных post_id": {
+      "main": [
+        [
+          {
+            "node": "06B · Data Table — сохранить отправляемые post_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06B · Data Table — сохранить отправляемые post_id": {
+      "main": [
+        [
+          {
+            "node": "06C · Вернуть финальную пачку после сохранения",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06C · Вернуть финальную пачку после сохранения": {
+      "main": [
+        [
+          {
+            "node": "06 · Красивые Email + Telegram2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 · Telegram — все получатели · тема Упоминания": {
+      "main": [
+        [
+          {
+            "node": "11 · Telegram — отправить в темы Упоминания",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "00 · 13:00 и 17:15 ежедневно1": {
+      "main": [
+        [
+          {
+            "node": "01 · ГЛАВНЫЙ КОНФИГ · переключатели",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 · SocialCrawl — поиск Threads1": {
+      "main": [
+        [
+          {
+            "node": "02A · Дешёвые проверки до доп. запросов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 · Задание AI-аналитику2": {
+      "main": [
+        [
+          {
+            "node": "05 · AI Agent — анализ упоминаний2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 · AI Agent — анализ упоминаний2": {
+      "main": [
+        [
+          {
+            "node": "05A · Разобрать AI и выбрать финальные",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model — анализ упоминаний2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "05 · AI Agent — анализ упоминаний2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 · Красивые Email + Telegram2": {
+      "main": [
+        [
+          {
+            "node": "07 · Gmail — лента упоминаний2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "10 · Telegram — все получатели · тема Упоминания",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "91 · Настройки setWebhook1": {
+      "main": [
+        [
+          {
+            "node": "92 · Telegram — setWebhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "79289636-0499-4d93-b980-47cd458d4dfd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2967e03616d693c6be914a95f0f9496a2b76ba5118ce7bb8c723e312bdf2c3e2",
+    "strictGeoLanguageProfanityFilterVersion": 1,
+    "strictFilterMode": "local_post_and_comment_plus_ai_fail_closed"
+  },
+  "nodeGroups": [],
+  "id": "YjvsDSVFGiRR5trZ",
+  "tags": []
+}
