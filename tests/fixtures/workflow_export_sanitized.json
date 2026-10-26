@@ -1,0 +1,1627 @@
+{
+  "name": "Sanitized n8n workflow export",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "node-id-001",
+      "name": "Node 001",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        10736,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-002",
+      "name": "Node 002",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10976,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-003",
+      "name": "Node 003",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11232,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-004",
+      "name": "Node 004",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11488,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-005",
+      "name": "Node 005",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11744,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "[redacted]",
+        "text": "[redacted]",
+        "options": {
+          "systemMessage": "[redacted]",
+          "maxIterations": 0,
+          "returnIntermediateSteps": false,
+          "autoSaveHighlightedData": false,
+          "enableStreaming": false
+        }
+      },
+      "id": "node-id-006",
+      "name": "Node 006",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        12000,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "model": "[redacted]",
+        "options": {}
+      },
+      "id": "node-id-007",
+      "name": "Node 007",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        11984,
+        3024
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "[redacted]",
+        "sessionKey": "[redacted]",
+        "contextWindowLength": 0
+      },
+      "id": "node-id-008",
+      "name": "Node 008",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        12240,
+        3024
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-009",
+      "name": "Node 009",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12288,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "[redacted]",
+        "toEmail": "[redacted]",
+        "subject": "[redacted]",
+        "html": "[redacted]",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "node-id-010",
+      "name": "Node 010",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        12560,
+        2672
+      ],
+      "webhookId": "[redacted]",
+      "credentials": {
+        "smtp": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-011",
+      "name": "Node 011",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12544,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "method": "[redacted]",
+        "url": "[redacted]",
+        "sendBody": true,
+        "specifyBody": "[redacted]",
+        "jsonBody": "[redacted]",
+        "options": {
+          "timeout": 0
+        }
+      },
+      "id": "node-id-012",
+      "name": "Node 012",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        12816,
+        2896
+      ],
+      "onError": "[redacted]"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-013",
+      "name": "Node 013",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8768,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "method": "[redacted]",
+        "url": "[redacted]",
+        "sendBody": true,
+        "specifyBody": "[redacted]",
+        "jsonBody": "[redacted]",
+        "options": {
+          "timeout": 0
+        }
+      },
+      "id": "node-id-014",
+      "name": "Node 014",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        9024,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "[redacted]",
+              "expression": "[redacted]"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        7712,
+        5632
+      ],
+      "id": "node-id-015",
+      "name": "Node 015"
+    },
+    {
+      "parameters": {
+        "operation": "[redacted]",
+        "dataTableId": {
+          "__rl": true,
+          "value": "[redacted]",
+          "mode": "[redacted]",
+          "cachedResultName": "[redacted]",
+          "cachedResultUrl": "[redacted]"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "[redacted]",
+              "condition": "[redacted]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        7952,
+        5632
+      ],
+      "id": "node-id-016",
+      "name": "Node 016"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8352,
+        4336
+      ],
+      "id": "node-id-017",
+      "name": "Node 017"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8592,
+        4336
+      ],
+      "id": "node-id-018",
+      "name": "Node 018"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9072,
+        4336
+      ],
+      "id": "node-id-019",
+      "name": "Node 019"
+    },
+    {
+      "parameters": {
+        "operation": "[redacted]",
+        "dataTableId": {
+          "__rl": true,
+          "value": "[redacted]",
+          "mode": "[redacted]",
+          "cachedResultName": "[redacted]",
+          "cachedResultUrl": "[redacted]"
+        },
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        9312,
+        4336
+      ],
+      "id": "node-id-020",
+      "name": "Node 020",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9552,
+        4336
+      ],
+      "id": "node-id-021",
+      "name": "Node 021"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "[redacted]",
+            "typeValidation": "[redacted]",
+            "version": 0
+          },
+          "conditions": [
+            {
+              "id": "[redacted]",
+              "leftValue": "[redacted]",
+              "rightValue": "[redacted]",
+              "operator": {
+                "type": "boolean",
+                "operation": "[redacted]",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "[redacted]"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        9792,
+        4336
+      ],
+      "id": "node-id-022",
+      "name": "Node 022"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10032,
+        4224
+      ],
+      "id": "node-id-023",
+      "name": "Node 023"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "[redacted]",
+            "typeValidation": "[redacted]",
+            "version": 0
+          },
+          "conditions": [
+            {
+              "id": "[redacted]",
+              "leftValue": "[redacted]",
+              "rightValue": "[redacted]",
+              "operator": {
+                "type": "boolean",
+                "operation": "[redacted]",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "[redacted]"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        10272,
+        4224
+      ],
+      "id": "node-id-024",
+      "name": "Node 024"
+    },
+    {
+      "parameters": {
+        "url": "[redacted]",
+        "authentication": "[redacted]",
+        "genericAuthType": "[redacted]",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "[redacted]",
+              "value": "[redacted]"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 0
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        10512,
+        4096
+      ],
+      "id": "node-id-025",
+      "name": "Node 025",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      },
+      "onError": "[redacted]"
+    },
+    {
+      "parameters": {
+        "mode": "[redacted]",
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10752,
+        4096
+      ],
+      "id": "node-id-026",
+      "name": "Node 026"
+    },
+    {
+      "parameters": {
+        "mode": "[redacted]",
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10752,
+        4352
+      ],
+      "id": "node-id-027",
+      "name": "Node 027"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        10992,
+        4224
+      ],
+      "id": "node-id-028",
+      "name": "Node 028"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11232,
+        4224
+      ],
+      "id": "node-id-029",
+      "name": "Node 029"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "[redacted]",
+            "typeValidation": "[redacted]",
+            "version": 0
+          },
+          "conditions": [
+            {
+              "id": "[redacted]",
+              "leftValue": "[redacted]",
+              "rightValue": "[redacted]",
+              "operator": {
+                "type": "boolean",
+                "operation": "[redacted]",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "[redacted]"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11472,
+        4224
+      ],
+      "id": "node-id-030",
+      "name": "Node 030"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12192,
+        4096
+      ],
+      "id": "node-id-031",
+      "name": "Node 031"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "[redacted]",
+            "typeValidation": "[redacted]",
+            "version": 0
+          },
+          "conditions": [
+            {
+              "id": "[redacted]",
+              "leftValue": "[redacted]",
+              "rightValue": "[redacted]",
+              "operator": {
+                "type": "boolean",
+                "operation": "[redacted]",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "[redacted]"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12432,
+        4096
+      ],
+      "id": "node-id-032",
+      "name": "Node 032"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "[redacted]",
+            "typeValidation": "[redacted]",
+            "version": 0
+          },
+          "conditions": [
+            {
+              "id": "[redacted]",
+              "leftValue": "[redacted]",
+              "rightValue": "[redacted]",
+              "operator": {
+                "type": "boolean",
+                "operation": "[redacted]",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "[redacted]"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12672,
+        3968
+      ],
+      "id": "node-id-033",
+      "name": "Node 033"
+    },
+    {
+      "parameters": {
+        "url": "[redacted]",
+        "authentication": "[redacted]",
+        "genericAuthType": "[redacted]",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "[redacted]",
+              "value": "[redacted]"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 0
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        12912,
+        3840
+      ],
+      "id": "node-id-034",
+      "name": "Node 034",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      },
+      "onError": "[redacted]"
+    },
+    {
+      "parameters": {
+        "mode": "[redacted]",
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13152,
+        3840
+      ],
+      "id": "node-id-035",
+      "name": "Node 035"
+    },
+    {
+      "parameters": {
+        "mode": "[redacted]",
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13152,
+        4096
+      ],
+      "id": "node-id-036",
+      "name": "Node 036"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        13392,
+        3968
+      ],
+      "id": "node-id-037",
+      "name": "Node 037"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13632,
+        3968
+      ],
+      "id": "node-id-038",
+      "name": "Node 038"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12672,
+        4240
+      ],
+      "id": "node-id-039",
+      "name": "Node 039"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11856,
+        4816
+      ],
+      "id": "node-id-040",
+      "name": "Node 040"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13872,
+        3968
+      ],
+      "id": "node-id-041",
+      "name": "Node 041"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "[redacted]",
+          "mode": "[redacted]",
+          "cachedResultName": "[redacted]",
+          "cachedResultUrl": "[redacted]"
+        },
+        "columns": {
+          "mappingMode": "[redacted]",
+          "value": {
+            "post_id": "[redacted]",
+            "first_seen_at": "[redacted]"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "[redacted]",
+              "displayName": "[redacted]",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "[redacted]",
+              "displayName": "[redacted]",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        14112,
+        3968
+      ],
+      "id": "node-id-042",
+      "name": "Node 042",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14352,
+        3968
+      ],
+      "id": "node-id-043",
+      "name": "Node 043"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-044",
+      "name": "Node 044",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15120,
+        4304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "[redacted]",
+        "url": "[redacted]",
+        "sendBody": true,
+        "specifyBody": "[redacted]",
+        "jsonBody": "[redacted]",
+        "options": {
+          "timeout": 0
+        }
+      },
+      "id": "node-id-045",
+      "name": "Node 045",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        15360,
+        4304
+      ],
+      "onError": "[redacted]"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "[redacted]",
+              "expression": "[redacted]"
+            },
+            {
+              "field": "[redacted]",
+              "expression": "[redacted]"
+            }
+          ]
+        }
+      },
+      "id": "node-id-046",
+      "name": "Node 046",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        8112,
+        4336
+      ]
+    },
+    {
+      "parameters": {
+        "url": "[redacted]",
+        "authentication": "[redacted]",
+        "genericAuthType": "[redacted]",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "[redacted]",
+              "value": "[redacted]"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 0
+        }
+      },
+      "id": "node-id-047",
+      "name": "Node 047",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8832,
+        4336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      },
+      "onError": "[redacted]"
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-048",
+      "name": "Node 048",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11712,
+        4096
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "[redacted]",
+        "text": "[redacted]",
+        "options": {
+          "systemMessage": "[redacted]",
+          "maxIterations": 0,
+          "returnIntermediateSteps": false,
+          "autoSaveHighlightedData": false,
+          "enableStreaming": false
+        }
+      },
+      "id": "node-id-049",
+      "name": "Node 049",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        11952,
+        4096
+      ]
+    },
+    {
+      "parameters": {
+        "model": "[redacted]",
+        "options": {}
+      },
+      "id": "node-id-050",
+      "name": "Node 050",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        11952,
+        4416
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-051",
+      "name": "Node 051",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14704,
+        4224
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "[redacted]",
+        "toEmail": "[redacted]",
+        "subject": "[redacted]",
+        "html": "[redacted]",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "node-id-052",
+      "name": "Node 052",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        15120,
+        4048
+      ],
+      "webhookId": "[redacted]",
+      "credentials": {
+        "smtp": {
+          "id": "[redacted]",
+          "name": "[redacted]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "[redacted]"
+      },
+      "id": "node-id-053",
+      "name": "Node 053",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9648,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "method": "[redacted]",
+        "url": "[redacted]",
+        "sendBody": true,
+        "specifyBody": "[redacted]",
+        "jsonBody": "[redacted]",
+        "options": {
+          "timeout": 0
+        }
+      },
+      "id": "node-id-054",
+      "name": "Node 054",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        9904,
+        1808
+      ]
+    }
+  ],
+  "connections": {
+    "Node 001": {
+      "main": [
+        [
+          {
+            "node": "Node 002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 002": {
+      "main": [
+        [
+          {
+            "node": "Node 003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 003": {
+      "main": [
+        [
+          {
+            "node": "Node 004",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 004": {
+      "main": [
+        [
+          {
+            "node": "Node 005",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 005": {
+      "main": [
+        [
+          {
+            "node": "Node 006",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 008": {
+      "ai_memory": [
+        [
+          {
+            "node": "Node 006",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 006": {
+      "main": [
+        [
+          {
+            "node": "Node 009",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 009": {
+      "main": [
+        [
+          {
+            "node": "Node 010",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Node 011",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 011": {
+      "main": [
+        [
+          {
+            "node": "Node 012",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 007": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Node 006",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 013": {
+      "main": [
+        [
+          {
+            "node": "Node 014",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 015": {
+      "main": [
+        [
+          {
+            "node": "Node 016",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 017": {
+      "main": [
+        [
+          {
+            "node": "Node 018",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 018": {
+      "main": [
+        [
+          {
+            "node": "Node 047",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 019": {
+      "main": [
+        [
+          {
+            "node": "Node 020",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 020": {
+      "main": [
+        [
+          {
+            "node": "Node 021",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 021": {
+      "main": [
+        [
+          {
+            "node": "Node 022",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 022": {
+      "main": [
+        [
+          {
+            "node": "Node 023",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Node 040",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 023": {
+      "main": [
+        [
+          {
+            "node": "Node 024",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 024": {
+      "main": [
+        [
+          {
+            "node": "Node 025",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Node 027",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 025": {
+      "main": [
+        [
+          {
+            "node": "Node 026",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 026": {
+      "main": [
+        [
+          {
+            "node": "Node 028",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 027": {
+      "main": [
+        [
+          {
+            "node": "Node 028",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Node 028": {
+      "main": [
+        [
+          {
+            "node": "Node 029",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 029": {
+      "main": [
+        [
+          {
+            "node": "Node 030",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 030": {
+      "main": [
+        [
+          {
+            "node": "Node 048",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Node 040",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 031": {
+      "main": [
+        [
+          {
+            "node": "Node 032",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 032": {
+      "main": [
+        [
+          {
+            "node": "Node 033",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Node 039",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 033": {
+      "main": [
+        [
+          {
+            "node": "Node 034",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Node 036",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 034": {
+      "main": [
+        [
+          {
+            "node": "Node 035",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 035": {
+      "main": [
+        [
+          {
+            "node": "Node 037",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 036": {
+      "main": [
+        [
+          {
+            "node": "Node 037",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Node 037": {
+      "main": [
+        [
+          {
+            "node": "Node 038",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 038": {
+      "main": [
+        [
+          {
+            "node": "Node 041",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 039": {
+      "main": [
+        [
+          {
+            "node": "Node 051",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 040": {
+      "main": [
+        [
+          {
+            "node": "Node 051",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 041": {
+      "main": [
+        [
+          {
+            "node": "Node 042",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 042": {
+      "main": [
+        [
+          {
+            "node": "Node 043",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 043": {
+      "main": [
+        [
+          {
+            "node": "Node 051",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 044": {
+      "main": [
+        [
+          {
+            "node": "Node 045",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 046": {
+      "main": [
+        [
+          {
+            "node": "Node 017",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 047": {
+      "main": [
+        [
+          {
+            "node": "Node 019",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 048": {
+      "main": [
+        [
+          {
+            "node": "Node 049",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 049": {
+      "main": [
+        [
+          {
+            "node": "Node 031",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 050": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Node 049",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 051": {
+      "main": [
+        [
+          {
+            "node": "Node 052",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Node 044",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Node 053": {
+      "main": [
+        [
+          {
+            "node": "Node 054",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "[redacted]",
+    "binaryMode": "[redacted]",
+    "availableInMCP": false
+  },
+  "versionId": "[redacted]",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "[redacted]",
+    "strictGeoLanguageProfanityFilterVersion": 0,
+    "strictFilterMode": "[redacted]"
+  },
+  "nodeGroups": [],
+  "id": "[redacted]",
+  "tags": []
+}

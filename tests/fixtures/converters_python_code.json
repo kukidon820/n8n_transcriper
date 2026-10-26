@@ -1,0 +1,12 @@
+{
+  "name": "python code node",
+  "nodes": [
+    {"id": "manual", "name": "Manual", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {}},
+    {"id": "set", "name": "Input", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [200, 0], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "value", "value": 41, "type": "number"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "code", "name": "Python Code", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [400, 0], "parameters": {"mode": "runOnceForAllItems", "language": "pythonNative", "pythonCode": "return [{\"json\": {\"answer\": _items[0][\"json\"][\"value\"] + 1}}]"}}
+  ],
+  "connections": {
+    "Manual": {"main": [[{"node": "Input", "type": "main", "index": 0}]]},
+    "Input": {"main": [[{"node": "Python Code", "type": "main", "index": 0}]]}
+  }
+}

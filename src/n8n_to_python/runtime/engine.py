@@ -1,8 +1,9 @@
 """Детерминированный асинхронный движок выполнения графа n8n."""
 
 from collections import Counter, deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -49,16 +50,38 @@ class WorkflowExecutionEngine:
         self._settings = settings or RuntimeSettings()
         self._planner = planner or ExecutionPlanner()
 
-    async def run(self, workflow: Workflow) -> ExecutionResult:
-        """Асинхронно выполнить все зарегистрированные trigger-узлы один раз."""
+    async def run(
+        self,
+        workflow: Workflow,
+        *,
+        initial_items: Mapping[str, Sequence[WorkflowItem]] | None = None,
+        services: Mapping[str, Any] | None = None,
+    ) -> ExecutionResult:
+        """Выполнить trigger-узлы с опциональными входными данными и адаптерами."""
         plan = self._planner.build(workflow, self._registry)
+        start_items = initial_items or {}
+        runtime_services = services or {}
+        trigger_names = plan.trigger_names
+        if initial_items is not None:
+            unknown = set(initial_items) - set(trigger_names)
+            if unknown:
+                raise ValueError(f"initial_items ссылается не на trigger-узлы: {sorted(unknown)}")
+            trigger_names = tuple(name for name in trigger_names if name in initial_items)
+            if not trigger_names:
+                raise ValueError("При передаче initial_items укажите имя trigger-узла.")
         queue = deque(
-            _Invocation(node_name=name, items=(), input_port=None) for name in plan.trigger_names
+            _Invocation(
+                node_name=name,
+                items=tuple(start_items.get(name, ())),
+                input_port=None,
+            )
+            for name in trigger_names
         )
         invocation_counts: Counter[str] = Counter()
         executions: list[NodeExecutionRecord] = []
         terminal_outputs: list[TerminalOutput] = []
         total_invocations = 0
+        run_state: dict[str, Any] = {}
 
         while queue:
             if total_invocations >= self._settings.max_node_executions:
@@ -75,6 +98,8 @@ class WorkflowExecutionEngine:
             execution_context = NodeExecutionContext(
                 input_port=invocation.input_port,
                 invocation_number=invocation_counts[node.name],
+                state=run_state,
+                services=runtime_services,
             )
 
             try:
@@ -111,11 +136,13 @@ class WorkflowExecutionEngine:
             )
 
             for output_index, batch in enumerate(result.outputs):
-                if not batch:
+                if batch is None:
                     continue
 
                 targets = plan.outgoing.get((node.name, output_index), ())
                 if not targets:
+                    if not batch:
+                        continue
                     terminal_outputs.append(
                         TerminalOutput(
                             node_name=node.name,

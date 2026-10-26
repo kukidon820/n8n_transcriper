@@ -1,0 +1,12 @@
+{
+  "name": "converter http request",
+  "nodes": [
+    {"id": "trigger", "name": "Manual", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {}},
+    {"id": "input", "name": "Input query", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [200, 0], "parameters": {"mode": "manual", "assignments": {"assignments": [{"name": "query", "value": "hello", "type": "string"}]}, "includeOtherFields": true, "options": {}}},
+    {"id": "request", "name": "Request", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.5, "position": [400, 0], "parameters": {"method": "GET", "url": "http://127.0.0.1:1/echo", "authentication": "none", "sendQuery": true, "queryParameters": {"parameters": [{"name": "q", "value": "={{ $json.query }}", "id": "q"}]}, "sendHeaders": false, "headerParameters": {"parameters": []}, "sendBody": false, "options": {"timeout": 5000}}}
+  ],
+  "connections": {
+    "Manual": {"main": [[{"node": "Input query", "type": "main", "index": 0}]]},
+    "Input query": {"main": [[{"node": "Request", "type": "main", "index": 0}]]}
+  }
+}
