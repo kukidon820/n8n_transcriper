@@ -3,6 +3,7 @@
 import base64
 import binascii
 import re
+from collections.abc import Mapping
 from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
@@ -46,10 +47,14 @@ class PostgresExecutor:
         items: tuple[WorkflowItem, ...],
         context: NodeExecutionContext,
     ) -> NodeResult:
-        client = context.services.get("postgres_client")
+        node_clients = context.services.get("postgres_clients_by_node", {})
+        client = (
+            node_clients.get(node.name) if isinstance(node_clients, Mapping) else None
+        ) or context.services.get("postgres_client")
         if not callable(getattr(client, "execute_query", None)):
             raise UnsupportedNodeConfigurationError(
-                "Postgres требует PostgresClient в runtime services['postgres_client']."
+                f"Postgres {node.name!r}: задайте подключение в config.toml "
+                "или передайте PostgresClient в runtime services."
             )
 
         input_items = items or (WorkflowItem(json={}),)
@@ -315,10 +320,14 @@ class EmailSendExecutor:
         items: tuple[WorkflowItem, ...],
         context: NodeExecutionContext,
     ) -> NodeResult:
-        sender = context.services.get("email_sender")
+        node_senders = context.services.get("email_senders_by_node", {})
+        sender = (
+            node_senders.get(node.name) if isinstance(node_senders, Mapping) else None
+        ) or context.services.get("email_sender")
         if not callable(getattr(sender, "send", None)):
             raise UnsupportedNodeConfigurationError(
-                "Email требует EmailSender в runtime services['email_sender']."
+                f"Email {node.name!r}: задайте SMTP credentials в config.toml "
+                "или передайте EmailSender в runtime services."
             )
         output: list[WorkflowItem] = []
         for item_index, item in enumerate(items):

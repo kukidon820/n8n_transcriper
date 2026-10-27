@@ -352,3 +352,56 @@ def test_http_request_rejects_enabled_body_without_json_body() -> None:
 
     with pytest.raises(UnsupportedNodeConfigurationError, match="sendBody=true требует jsonBody"):
         default_node_converter_registry().build_runtime_registry(workflow)
+
+
+@pytest.mark.asyncio
+async def test_http_request_uses_generic_user_credentials_from_runtime_config() -> None:
+    """Use manually configured headers for an auth type unknown to the converter."""
+
+    async def inspect_auth(request: web.Request) -> web.Response:
+        return web.json_response(
+            {
+                "credential": request.headers.get("X-API-Key"),
+                "query": request.query.get("tenant"),
+            }
+        )
+
+    app = web.Application()
+    app.router.add_get("/auth", inspect_auth)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    assert site._server is not None
+    port = site._server.sockets[0].getsockname()[1]
+
+    workflow = load_workflow("converters_http.json")
+    request_node = next(node for node in workflow.nodes if node.name == "Request")
+    request_node.parameters.update(
+        {
+            "url": f"http://127.0.0.1:{port}/auth",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "customCredential",
+        }
+    )
+    registry = default_node_converter_registry().build_runtime_registry(workflow)
+
+    try:
+        result = await WorkflowExecutionEngine(registry).run(
+            workflow,
+            services={
+                "credentials": {
+                    "Request": {
+                        "type": "customCredential",
+                        "headers": {"X-API-Key": "local-test-secret"},
+                        "query": {"tenant": "demo"},
+                    }
+                }
+            },
+        )
+        assert result.terminal_outputs[0].items[0].json_data == {
+            "credential": "local-test-secret",
+            "query": "demo",
+        }
+    finally:
+        await runner.cleanup()

@@ -65,7 +65,7 @@ class LangGraphGenerator(PythonCoreGenerator):
 
     @staticmethod
     def _render_readme(workflow_name: str, project_name: str | None = None) -> str:
-        """Describe the LangGraph entry point and manual DeepSeek configuration."""
+        """Describe the LangGraph entry point and manual AI-provider configuration."""
         title = project_name or workflow_name
         return f"""# {title}
 
@@ -82,13 +82,13 @@ uv run run-workflow
 
 Перед запуском прочитайте `MANUAL_CHANGES.md`. Неподдержанные узлы и настройки намеренно останавливают выполнение, пока вы не добавите нужную реализацию и не закроете действие в `src/generated_workflow/manual_changes.py`.
 
-## AI Agent: DeepSeek Chat Model v1
+## AI Agent: DeepSeek Chat Model v1 и OpenAI Chat Model
 
-Для подключённой пары AI Agent v2.2 + DeepSeek Chat Model v1 задайте API key в окружении `DEEPSEEK_API_KEY`. По умолчанию используется `https://api.deepseek.com` и модель `deepseek-flash`; при необходимости задайте `DEEPSEEK_BASE_URL` и `DEEPSEEK_MODEL`. Запросы отправляются через `aiohttp`. API key не записывается в файлы проекта.
+Скопируйте `config.toml.example` в `config.toml` и заполните секцию `credentials` нужного узла модели. Для OpenAI задайте API key, URL и модель; для DeepSeek — соответствующие поля DeepSeek. Если credentials присутствуют в экспорте, шаблон содержит тип и пустые поля, без секретов. Запасные переменные окружения: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` и `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`. Запросы отправляются через `aiohttp` к Chat Completions API. В OpenAI Chat Model v1.3 нужно выключить Responses API: этот режим пока не поддерживается.
 
 Поддержанный Calculator Tool вычисляет только числовые выражения с арифметическими операциями. Simple Memory v1.3 хранит последние сообщения в памяти одного запуска Python-процесса по `sessionKey`; долговременное хранилище не создаётся.
 
-Postgres и Data Table берут подключение из `DATABASE_URL`; Email использует `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` и `SMTP_USE_TLS`. Настройки сборки находятся в `src/generated_workflow/services.py`.
+Postgres и Email используют credentials своих узлов из `config.toml`; Data Table — `[database].url`. Переменные `DATABASE_URL` и `SMTP_*` остаются запасным вариантом. Настройки сборки находятся в `src/generated_workflow/services.py`.
 
 Webhook не запускает постоянный сервер. Передайте входные данные через `initial_items` функции `run_workflow` в `src/generated_workflow/main.py`.
 """
@@ -143,7 +143,7 @@ async def run_workflow(
         node_overrides=ai_executors,
         ignored_node_names=auxiliary_names,
     )
-    runtime_services = build_services({node.type for node in workflow.nodes}, services)
+    runtime_services = build_services(workflow, services)
     try:
         return await LangGraphExecutionEngine(registry).run(
             workflow,
