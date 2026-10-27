@@ -24,6 +24,8 @@ from .errors import (
 )
 from .expressions import N8nExpressionEvaluator
 
+NON_EXECUTABLE_NODE_TYPES = frozenset({"n8n-nodes-base.stickyNote"})
+
 
 class _StrictParameters(BaseModel):
     """Базовая схема параметров, запрещающая неизвестные настройки."""
@@ -283,6 +285,8 @@ class NodeConverterRegistry:
 
     def inspect_node(self, node: WorkflowNode) -> tuple[WorkflowDiagnostic, ...]:
         """Вернуть warning для неизвестного узла или error для его параметров."""
+        if node.type in NON_EXECUTABLE_NODE_TYPES:
+            return ()
         converter = self._converters.get((node.type, node.type_version))
         if converter is None:
             supported_versions = sorted(
@@ -336,6 +340,8 @@ class NodeConverterRegistry:
 
     def is_trigger(self, node: WorkflowNode) -> bool:
         """Проверить, зарегистрирован ли узел как trigger с валидными параметрами."""
+        if node.type in NON_EXECUTABLE_NODE_TYPES:
+            return False
         converter = self._converters.get((node.type, node.type_version))
         if converter is None:
             return False
@@ -360,6 +366,8 @@ class NodeConverterRegistry:
         executors: dict[str, NodeExecutor] = {}
         overrides = node_overrides or {}
         for node in workflow.nodes:
+            if node.type in NON_EXECUTABLE_NODE_TYPES:
+                continue
             if node.name in ignored_node_names:
                 continue
             if node.name in overrides:
@@ -829,6 +837,8 @@ def default_node_converter_registry() -> NodeConverterRegistry:
     from .file_nodes import (
         CompressionExecutor,
         CompressionParameters,
+        ConvertToFileExecutor,
+        ConvertToFileParameters,
         ExtractFileParameters,
         ExtractFromFileExecutor,
     )
@@ -861,7 +871,22 @@ def default_node_converter_registry() -> NodeConverterRegistry:
             "n8n-nodes-base.compression", 1.1, CompressionParameters, CompressionExecutor
         ),
         ValidatedNodeConverter(
+            "n8n-nodes-base.extractFromFile", 1, ExtractFileParameters, ExtractFromFileExecutor
+        ),
+        ValidatedNodeConverter(
+            "n8n-nodes-base.extractFromFile", 1.1, ExtractFileParameters, ExtractFromFileExecutor
+        ),
+        ValidatedNodeConverter(
             "n8n-nodes-base.extractFromFile", 1.2, ExtractFileParameters, ExtractFromFileExecutor
+        ),
+        ValidatedNodeConverter(
+            "n8n-nodes-base.convertToFile", 1, ConvertToFileParameters, ConvertToFileExecutor
+        ),
+        ValidatedNodeConverter(
+            "n8n-nodes-base.convertToFile", 1.1, ConvertToFileParameters, ConvertToFileExecutor
+        ),
+        ValidatedNodeConverter(
+            "n8n-nodes-base.convertToFile", 1.2, ConvertToFileParameters, ConvertToFileExecutor
         ),
         ValidatedNodeConverter(
             "n8n-nodes-base.dataTable", 1, DataTableParameters, DataTableExecutor
