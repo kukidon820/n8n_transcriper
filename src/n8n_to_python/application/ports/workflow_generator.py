@@ -28,6 +28,7 @@ class WorkflowGenerator(Protocol):
         workflow: Workflow,
         *,
         progress: ProgressReporter,
+        project_name: str | None = None,
     ) -> GeneratedProject:
-        """Сгенерировать содержимое проекта без записи его на диск."""
+        """Сгенерировать проект в памяти с необязательным именем пакета."""
         ...

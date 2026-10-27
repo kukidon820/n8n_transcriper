@@ -35,6 +35,8 @@ class WorkflowConverter:
         self,
         workflow: Workflow,
         backend: GenerationBackend,
+        *,
+        project_name: str | None = None,
     ) -> GeneratedProject:
         """Сгенерировать проект выбранным backend для уже валидного workflow."""
         try:
@@ -46,4 +48,8 @@ class WorkflowConverter:
             ) from error
 
         with self._progress.stage(f"conversion:{backend.value}"):
-            return await generator.generate(workflow, progress=self._progress)
+            return await generator.generate(
+                workflow,
+                progress=self._progress,
+                project_name=project_name,
+            )
