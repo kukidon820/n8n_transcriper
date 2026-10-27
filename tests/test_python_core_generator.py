@@ -32,9 +32,15 @@ def write_project(project_files: dict[str, str], root: Path) -> None:
         target.write_text(content, encoding="utf-8")
 
 
-async def run_generated_project(root: Path) -> tuple[int, str, str]:
+async def run_generated_project(
+    root: Path,
+    *,
+    unset_environment: tuple[str, ...] = (),
+) -> tuple[int, str, str]:
     """Запустить сгенерированный пакет отдельным процессом Python."""
     environment = os.environ.copy()
+    for variable_name in unset_environment:
+        environment.pop(variable_name, None)
     source_path = str(root / "src")
     previous_python_path = environment.get("PYTHONPATH")
     environment["PYTHONIOENCODING"] = "utf-8"
@@ -131,6 +137,27 @@ async def test_langgraph_and_python_core_generate_equal_results_for_the_same_fix
     )
     assert "LangGraphExecutionEngine" in langgraph_project.files["src/generated_workflow/main.py"]
     assert any(event.stage == "langgraph:render-project" for event in events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("generator_type", [PythonCoreGenerator, LangGraphGenerator])
+async def test_generated_database_workflow_reports_missing_database_url(
+    tmp_path: Path,
+    generator_type: type[PythonCoreGenerator] | type[LangGraphGenerator],
+) -> None:
+    """Fail with a configuration message instead of a later missing-client error."""
+    workflow = load_workflow("converters_postgres.json")
+    project = await generator_type().generate(workflow, progress=ProgressReporter())
+    write_project(project.files, tmp_path)
+
+    return_code, stdout, stderr = await run_generated_project(
+        tmp_path,
+        unset_environment=("DATABASE_URL",),
+    )
+
+    assert return_code != 0
+    assert stdout == ""
+    assert "Не задана переменная окружения DATABASE_URL" in stderr
 
 
 @pytest.mark.asyncio
