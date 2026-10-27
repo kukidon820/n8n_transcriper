@@ -47,6 +47,40 @@ def test_expression_interpolates_values_inside_regular_text() -> None:
     assert evaluator.evaluate("Bearer {{ $json.token }}", item) == "Bearer secret"
 
 
+def test_expression_formats_now_with_luxon_date_tokens() -> None:
+    """Format `$now` with the Luxon tokens used in workflow filenames and subjects."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    evaluator = N8nExpressionEvaluator()
+    item = WorkflowItem(json={})
+    context = NodeExecutionContext(
+        input_port=None,
+        invocation_number=1,
+        state={},
+        services={"timezone": "UTC"},
+    )
+
+    before = datetime.now(ZoneInfo("UTC"))
+    formatted = evaluator.evaluate(
+        '={{ $now.toFormat("yyyy-LL-dd HH:mm:ss") }}', item, context=context
+    )
+    after = datetime.now(ZoneInfo("UTC"))
+    parsed = datetime.strptime(formatted, "%Y-%m-%d %H:%M:%S").replace(tzinfo=ZoneInfo("UTC"))
+    assert before.replace(microsecond=0) <= parsed <= after.replace(microsecond=0)
+    assert evaluator.evaluate(
+        'Report {{ $now.toFormat("dd.LL.yyyy") }}', item, context=context
+    ).startswith("Report ")
+
+
+def test_expression_rejects_unknown_luxon_format_tokens() -> None:
+    """Explain when a pattern requests a Luxon token outside the implemented subset."""
+    evaluator = N8nExpressionEvaluator()
+
+    with pytest.raises(UnsupportedNodeConfigurationError, match="cccc"):
+        evaluator.evaluate('={{ $now.toFormat("yyyy-LL-dd cccc") }}', WorkflowItem(json={}))
+
+
 def test_expression_resolves_nested_json_body_values() -> None:
     """Обработать выражения глубоко внутри JSON body/query структуры."""
     evaluator = N8nExpressionEvaluator()

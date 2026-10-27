@@ -4,7 +4,9 @@ import ast
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..runtime.models import WorkflowItem
 from .errors import UnsupportedNodeConfigurationError
@@ -17,6 +19,79 @@ _TOKEN_PATTERN = re.compile(
     r"(?P<identifier>[A-Za-z_]\w*)|"
     r"(?P<operator>===|!==|\?\?|&&|\|\||==|!=|>=|<=|[+*/%><!?:.,()\[\]{}-])"
 )
+
+_LUXON_FORMAT_TOKENS = {
+    "yyyy": lambda value: f"{value.year:04d}",
+    "yy": lambda value: f"{value.year % 100:02d}",
+    "LL": lambda value: f"{value.month:02d}",
+    "L": lambda value: str(value.month),
+    "dd": lambda value: f"{value.day:02d}",
+    "d": lambda value: str(value.day),
+    "HH": lambda value: f"{value.hour:02d}",
+    "H": lambda value: str(value.hour),
+    "hh": lambda value: f"{(value.hour - 1) % 12 + 1:02d}",
+    "h": lambda value: str((value.hour - 1) % 12 + 1),
+    "mm": lambda value: f"{value.minute:02d}",
+    "m": lambda value: str(value.minute),
+    "ss": lambda value: f"{value.second:02d}",
+    "s": lambda value: str(value.second),
+    "SSS": lambda value: f"{value.microsecond // 1000:03d}",
+    "ZZ": lambda value: value.strftime("%z")[:3] + ":" + value.strftime("%z")[3:],
+}
+_LUXON_FORMAT_TOKEN_PATTERN = re.compile(
+    "|".join(sorted(map(re.escape, _LUXON_FORMAT_TOKENS), key=len, reverse=True))
+)
+_LUXON_FORMAT_LETTERS = re.compile(r"[A-Za-z]+")
+
+
+def _current_datetime(context: Any) -> datetime:
+    """Return `$now` in the configured workflow timezone, defaulting to UTC."""
+    services = getattr(context, "services", {}) if context is not None else {}
+    timezone_name = services.get("timezone", "UTC")
+    if not isinstance(timezone_name, str):
+        raise UnsupportedNodeConfigurationError("Настройка часового пояса должна быть строкой.")
+    try:
+        return datetime.now(ZoneInfo(timezone_name))
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise UnsupportedNodeConfigurationError(
+            f"Неизвестный часовой пояс для $now: {timezone_name!r}."
+        ) from error
+
+
+def _format_luxon_datetime(value: datetime, pattern: str) -> str:
+    """Format `$now` using the commonly used, explicit Luxon token subset."""
+    pieces: list[str] = []
+    position = 0
+    while position < len(pattern):
+        if pattern[position] == "'":
+            if position + 1 < len(pattern) and pattern[position + 1] == "'":
+                pieces.append("'")
+                position += 2
+                continue
+            end = pattern.find("'", position + 1)
+            if end < 0:
+                raise UnsupportedNodeConfigurationError(
+                    "$now.toFormat(): незакрытый текстовый фрагмент в шаблоне."
+                )
+            pieces.append(pattern[position + 1 : end])
+            position = end + 1
+            continue
+
+        token_match = _LUXON_FORMAT_TOKEN_PATTERN.match(pattern, position)
+        if token_match is not None:
+            token = token_match.group()
+            pieces.append(_LUXON_FORMAT_TOKENS[token](value))
+            position = token_match.end()
+            continue
+        if pattern[position].isalpha():
+            unsupported = _LUXON_FORMAT_LETTERS.match(pattern, position)
+            token = unsupported.group() if unsupported else pattern[position]
+            raise UnsupportedNodeConfigurationError(
+                f"Токен даты {token!r} в $now.toFormat() пока не поддерживается."
+            )
+        pieces.append(pattern[position])
+        position += 1
+    return "".join(pieces)
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,6 +430,7 @@ class N8nExpressionEvaluator:
                 "$json": item.json_data,
                 "$binary": item.binary or {},
                 "$itemIndex": item_index,
+                "$now": _current_datetime(context),
                 "$input": _Namespace("$input"),
                 "$": _Namespace("$"),
                 "JSON": _Namespace("JSON"),
@@ -544,6 +620,8 @@ class N8nExpressionEvaluator:
             return _Function(f"String.{name}", parent)
         if isinstance(parent, (list, str)) and name == "length":
             return len(parent)
+        if isinstance(parent, datetime) and name == "toFormat":
+            return _Function("DateTime.toFormat", parent)
         raise UnsupportedNodeConfigurationError(
             f"Доступ к свойству {name!r} этого expression value не поддерживается."
         )
@@ -580,6 +658,10 @@ class N8nExpressionEvaluator:
             return self._number(arguments[0])
         if function.name == "Boolean" and len(arguments) == 1:
             return self._js_truthy(arguments[0])
+        if function.name == "DateTime.toFormat" and len(arguments) == 1:
+            if not isinstance(arguments[0], str):
+                raise UnsupportedNodeConfigurationError("$now.toFormat() ожидает строковый шаблон.")
+            return _format_luxon_datetime(function.receiver, arguments[0])
         if function.name == "JSON.stringify" and len(arguments) == 1:
             return json.dumps(arguments[0], ensure_ascii=False, separators=(",", ":"))
         if function.name == "JSON.parse" and len(arguments) == 1 and isinstance(arguments[0], str):

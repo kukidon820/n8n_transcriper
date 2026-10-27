@@ -15,6 +15,7 @@ from ..domain.models.workflow import WorkflowNode
 from ..runtime.executors import NodeExecutionContext
 from ..runtime.models import NodeResult, WorkflowItem
 from .errors import UnsupportedNodeConfigurationError
+from .expressions import N8nExpressionEvaluator
 from .nodes import EmptyOptions, _StrictParameters
 
 _MAX_FILE_BYTES = 50 * 1024 * 1024
@@ -89,6 +90,7 @@ class CompressionExecutor:
 
     def __init__(self, parameters: CompressionParameters):
         self._parameters = parameters
+        self._expressions = N8nExpressionEvaluator()
 
     async def execute(
         self,
@@ -99,10 +101,23 @@ class CompressionExecutor:
         output: list[WorkflowItem] = []
         paired_input_indexes: list[int] = []
         for item_index, item in enumerate(items):
-            content, _ = _binary_bytes(item, self._parameters.binary_property_name)
+            content, input_metadata = _binary_bytes(item, self._parameters.binary_property_name)
             if self._parameters.operation == "compress":
-                archive = self._compress(content)
-                name = self._compressed_name()
+                archive_name = self._expressions.evaluate(
+                    self._parameters.file_name,
+                    item,
+                    item_index=item_index,
+                    context=context,
+                )
+                if not isinstance(archive_name, str) or not archive_name:
+                    raise UnsupportedNodeConfigurationError(
+                        "Compression fileName должен вычисляться в непустую строку."
+                    )
+                input_file_name = input_metadata.get("fileName")
+                if not isinstance(input_file_name, str) or not input_file_name:
+                    input_file_name = self._parameters.binary_property_name
+                archive = self._compress(content, input_file_name)
+                name = self._compressed_name(archive_name)
                 mimetype = (
                     "application/zip"
                     if self._parameters.output_format == "zip"
@@ -136,20 +151,20 @@ class CompressionExecutor:
             paired_input_indexes=(tuple(paired_input_indexes),),
         )
 
-    def _compressed_name(self) -> str:
-        name = self._parameters.file_name
+    def _compressed_name(self, file_name: str) -> str:
+        name = file_name
         if self._parameters.output_format == "gzip" and not name.endswith(".gz"):
             return f"{name}.gz"
         if self._parameters.output_format == "zip" and not name.endswith(".zip"):
             return f"{name}.zip"
         return name
 
-    def _compress(self, content: bytes) -> bytes:
+    def _compress(self, content: bytes, input_file_name: str) -> bytes:
         if self._parameters.output_format == "gzip":
             return gzip.compress(content)
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(self._parameters.file_name, content)
+            archive.writestr(input_file_name, content)
         return buffer.getvalue()
 
     def _decompress(self, content: bytes) -> list[tuple[str, bytes, str]]:

@@ -70,6 +70,16 @@ class AioSMTPEmailSender:
         mime_message.set_content(message.text or "")
         if message.html is not None:
             mime_message.add_alternative(message.html, subtype="html")
+        for attachment in message.attachments:
+            maintype, separator, subtype = attachment.mime_type.partition("/")
+            if not separator or not maintype or not subtype:
+                maintype, subtype = "application", "octet-stream"
+            mime_message.add_attachment(
+                attachment.content,
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment.file_name,
+            )
 
         recipients = [*message.to, *message.cc, *message.bcc]
         refused_recipients, response = await aiosmtplib.send(
