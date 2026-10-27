@@ -1,9 +1,11 @@
 """Проверки runtime на небольших локальных графах и node-adapter-ах."""
 
+import re
 from pathlib import Path
 
 import pytest
 
+from n8n_to_python.converters.expressions import N8nExpressionEvaluator
 from n8n_to_python.converters.nodes import default_node_converter_registry
 from n8n_to_python.domain.models.workflow import Workflow, WorkflowNode
 from n8n_to_python.runtime.engine import RuntimeSettings, WorkflowExecutionEngine
@@ -174,6 +176,25 @@ class FixtureFailureExecutor:
         raise ValueError("fixture node failed")
 
 
+class FixtureExecutionIdExecutor:
+    """Вычислить имя файла через runtime execution context."""
+
+    is_trigger = False
+
+    async def execute(
+        self,
+        node: WorkflowNode,
+        items: tuple[WorkflowItem, ...],
+        context: NodeExecutionContext,
+    ) -> NodeResult:
+        """Вернуть вычисленное выражение `$execution.id` в output item."""
+        evaluator = N8nExpressionEvaluator()
+        file_name = evaluator.evaluate(
+            "n8n-csv-report-{{ $execution.id }}", items[0], context=context
+        )
+        return NodeResult(outputs=((WorkflowItem(json={"file_name": file_name}),),))
+
+
 def make_registry(
     *,
     trigger: FixtureTriggerExecutor | None = None,
@@ -239,6 +260,46 @@ async def test_langgraph_matches_python_core_on_runtime_fixtures(filename: str) 
     langgraph_result = await LangGraphExecutionEngine(registry).run(workflow)
 
     assert langgraph_result == core_result
+
+
+@pytest.mark.asyncio
+async def test_both_runtimes_inject_execution_id_into_n8n_expressions() -> None:
+    """Создавать execution ID и делать его доступным обоим runtime backend-ам."""
+    workflow = Workflow.model_validate(
+        {
+            "name": "Execution ID expression",
+            "nodes": [
+                {
+                    "name": "Trigger",
+                    "type": "fixture.trigger",
+                    "typeVersion": 1,
+                    "position": [0, 0],
+                },
+                {
+                    "name": "Filename",
+                    "type": "fixture.execution-id",
+                    "typeVersion": 1,
+                    "position": [200, 0],
+                },
+            ],
+            "connections": {
+                "Trigger": {"main": [[{"node": "Filename", "type": "main", "index": 0}]]}
+            },
+        }
+    )
+    registry = NodeExecutorRegistry(
+        {
+            "fixture.trigger": FixtureTriggerExecutor(),
+            "fixture.execution-id": FixtureExecutionIdExecutor(),
+        }
+    )
+
+    core_result = await WorkflowExecutionEngine(registry).run(workflow)
+    langgraph_result = await LangGraphExecutionEngine(registry).run(workflow)
+
+    for result in (core_result, langgraph_result):
+        file_name = result.terminal_outputs[0].items[0].json_data["file_name"]
+        assert re.fullmatch(r"n8n-csv-report-[0-9a-f]{32}", file_name)
 
 
 def make_multi_trigger_workflow() -> Workflow:

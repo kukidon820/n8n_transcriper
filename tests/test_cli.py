@@ -9,6 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from n8n_to_python.application.models.diagnostic import WorkflowDiagnostic
+from n8n_to_python.cli.main import _brief_diagnostic_message
+
 PROJECT_ROOT = Path(__file__).parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -79,6 +82,86 @@ def test_cli_convert_help_describes_output_backend_and_strict_options(tmp_path: 
     assert "langgraph" in result.stdout
     assert "--project-name" in result.stdout
     assert "--strict" in result.stdout
+
+
+def test_cli_validate_help_explains_that_backend_is_not_selected(tmp_path: Path) -> None:
+    """Explain why validate can warn about AI nodes supported by LangGraph."""
+    result = run_cli("validate", "--help", cwd=tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "backend здесь не выбирается" in result.stdout
+
+
+def test_cli_explains_that_node_names_do_not_control_support() -> None:
+    """Показать реальный type/version и объяснить, почему переименование не поможет."""
+    diagnostic = WorkflowDiagnostic(
+        severity="warning",
+        code="UNSUPPORTED_NODE_TYPE",
+        message="Узел 'CSV - Create file' типа 'n8n-nodes-base.convertToFile' версии 1.1 не поддержан.",
+        node_name="CSV - Create file",
+        node_type="n8n-nodes-base.convertToFile",
+        context={"type_version": 1.1},
+    )
+
+    message = _brief_diagnostic_message(diagnostic)
+
+    assert "n8n-nodes-base.convertToFile" in message
+    assert "1.1" in message
+    assert "переименование узла" in message
+
+
+def test_cli_explains_supported_node_versions() -> None:
+    """Перечислить поддержанные версии и версию, которой нет в адаптере."""
+    diagnostic = WorkflowDiagnostic(
+        severity="warning",
+        code="UNSUPPORTED_NODE_VERSION",
+        message="Узел 'HTTP' типа 'n8n-nodes-base.httpRequest' версии 4.2 не поддержан. "
+        "Поддержанные версии: [1.0, 4.1].",
+        node_name="HTTP",
+        node_type="n8n-nodes-base.httpRequest",
+        context={"type_version": 4.2},
+    )
+
+    message = _brief_diagnostic_message(diagnostic)
+
+    assert "[1.0, 4.1]" in message
+    assert "4.2" in message
+    assert "имя узла" in message
+
+
+def test_cli_translates_unexpected_node_parameters_into_russian() -> None:
+    """Назвать конкретные поля и объяснить, что именно не прошло проверку."""
+    diagnostic = WorkflowDiagnostic(
+        severity="error",
+        code="INVALID_NODE_CONFIGURATION",
+        message=(
+            "Узел 'Example' (n8n-nodes-base.example v1) имеет неподдерживаемые параметры: "
+            "options.futureFlag: Extra inputs are not permitted; resource: Field required; "
+            "name: Input should be a valid string"
+        ),
+        node_name="Example",
+        node_type="n8n-nodes-base.example",
+    )
+
+    message = _brief_diagnostic_message(diagnostic)
+
+    assert "options.futureFlag" in message
+    assert "не входит в настройки" in message
+    assert "обязательное поле отсутствует" in message
+    assert "ожидается строка" in message
+    assert "Extra inputs are not permitted" not in message
+    assert "valid string" not in message
+
+
+def test_cli_missing_file_reports_path_without_traceback(tmp_path: Path) -> None:
+    """Коротко назвать отсутствующий файл и не печатать пользователю traceback."""
+    source = tmp_path / "missing-workflow.json"
+
+    result = run_cli("validate", str(source), cwd=tmp_path)
+
+    assert result.returncode == 1
+    assert "missing-workflow.json" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_cli_validate_reads_a_real_fixture_and_reports_progress(tmp_path: Path) -> None:
@@ -159,8 +242,10 @@ def test_cli_strict_validation_fails_for_unsupported_nodes(tmp_path: Path) -> No
     result = run_cli("validate", str(FIXTURES / "workflow_test.json"), "--strict", cwd=tmp_path)
 
     assert result.returncode == 1
-    assert "Этот тип узла пока не поддерживается." in result.stderr
+    assert "В Python Core AI Agent не выполняется" in result.stderr
+    assert "для генерации укажите convert --backend langgraph" in result.stderr
     assert "Проверка не пройдена" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_cli_convert_strict_stops_before_writing_unsupported_workflow(tmp_path: Path) -> None:
@@ -176,7 +261,8 @@ def test_cli_convert_strict_stops_before_writing_unsupported_workflow(tmp_path: 
     )
 
     assert result.returncode == 1
-    assert "Этот тип узла пока не поддерживается." in result.stderr
+    assert "В Python Core AI Agent не выполняется" in result.stderr
+    assert "Traceback" not in result.stderr
     assert not output.exists()
 
 
