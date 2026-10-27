@@ -57,6 +57,7 @@ class PythonCoreGenerator(WorkflowGenerator):
         workflow: Workflow,
         *,
         progress: ProgressReporter,
+        project_name: str | None = None,
     ) -> GeneratedProject:
         """Создать файлы проекта в памяти; запись на диск остаётся Infrastructure задачей."""
         with progress.stage(f"{self.backend.value}:analyze-workflow"):
@@ -72,8 +73,8 @@ class PythonCoreGenerator(WorkflowGenerator):
             files = self._copy_runtime_sources()
             files.update(
                 {
-                    "pyproject.toml": self._render_pyproject(workflow.name),
-                    "README.md": self._render_readme(workflow.name),
+                    "pyproject.toml": self._render_pyproject(workflow.name, project_name),
+                    "README.md": self._render_readme(workflow.name, project_name),
                     "MANUAL_CHANGES.md": self._render_manual_changes(
                         workflow,
                         manual_actions,
@@ -251,11 +252,11 @@ class PythonCoreGenerator(WorkflowGenerator):
         return runtime_files
 
     @staticmethod
-    def _render_pyproject(workflow_name: str) -> str:
+    def _render_pyproject(workflow_name: str, project_name: str | None = None) -> str:
         """Создать uv/Hatchling manifest с зависимостями автономного runtime."""
-        project_name = _project_slug(workflow_name)
+        package_name = _project_slug(project_name or workflow_name)
         return f"""[project]
-name = {json.dumps(project_name)}
+name = {json.dumps(package_name)}
 version = "0.1.0"
 description = "Python Core runtime generated from an n8n workflow"
 readme = "README.md"
@@ -285,9 +286,10 @@ packages = ["src/generated_workflow", "src/n8n_to_python"]
 """
 
     @staticmethod
-    def _render_readme(workflow_name: str) -> str:
+    def _render_readme(workflow_name: str, project_name: str | None = None) -> str:
         """Объяснить установку, запуск и настройку внешних сервисов."""
-        return f"""# {workflow_name}
+        title = project_name or workflow_name
+        return f"""# {title}
 
 Автономный проект Python Core, созданный из n8n workflow. Runtime и адаптеры находятся в `src/n8n_to_python`; данные workflow — в `src/generated_workflow/workflow.json`.
 

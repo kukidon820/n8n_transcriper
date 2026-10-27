@@ -49,10 +49,10 @@ class LangGraphGenerator(PythonCoreGenerator):
         return actions
 
     @staticmethod
-    def _render_pyproject(workflow_name: str) -> str:
+    def _render_pyproject(workflow_name: str, project_name: str | None = None) -> str:
         """Add only the LangGraph dependency to the generated backend manifest."""
         return (
-            PythonCoreGenerator._render_pyproject(workflow_name)
+            PythonCoreGenerator._render_pyproject(workflow_name, project_name)
             .replace(
                 'description = "Python Core runtime generated from an n8n workflow"',
                 'description = "LangGraph runtime generated from an n8n workflow"',
@@ -64,9 +64,10 @@ class LangGraphGenerator(PythonCoreGenerator):
         )
 
     @staticmethod
-    def _render_readme(workflow_name: str) -> str:
+    def _render_readme(workflow_name: str, project_name: str | None = None) -> str:
         """Describe the LangGraph entry point and manual DeepSeek configuration."""
-        return f"""# {workflow_name}
+        title = project_name or workflow_name
+        return f"""# {title}
 
 Автономный проект LangGraph, созданный из n8n workflow. Runtime находится в `src/n8n_to_python`, данные workflow — в `src/generated_workflow/workflow.json`.
 

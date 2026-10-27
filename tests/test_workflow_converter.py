@@ -32,8 +32,10 @@ class FixtureGenerator:
         workflow: Workflow,
         *,
         progress: ProgressReporter,
+        project_name: str | None = None,
     ) -> GeneratedProject:
         self.workflow = workflow
+        self.project_name = project_name
         if self.error is not None:
             raise self.error
         with progress.stage("render-python-files"):
