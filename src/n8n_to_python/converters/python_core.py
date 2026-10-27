@@ -403,6 +403,7 @@ def _project_slug(workflow_name: str) -> str:
 _SERVICES_SOURCE = '''"""Подключение внешних сервисов через переменные окружения."""
 
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from n8n_to_python.infrastructure.database import create_postgres_engine_from_env
@@ -413,17 +414,28 @@ from n8n_to_python.infrastructure.stores.sqlalchemy_data_table_store import (
 )
 
 
-def build_services(node_types: set[str]) -> dict[str, Any]:
-    """Подключить настроенные PostgreSQL/Data Table и SMTP адаптеры."""
-    services: dict[str, Any] = {}
-    database_nodes = {"n8n-nodes-base.postgres", "n8n-nodes-base.dataTable"}
-    if node_types & database_nodes and os.environ.get("DATABASE_URL"):
+def build_services(
+    node_types: set[str],
+    overrides: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Собрать сервисы по переменным окружения и сохранить внедрённые адаптеры."""
+    services: dict[str, Any] = dict(overrides or {})
+    needs_postgres = (
+        "n8n-nodes-base.postgres" in node_types and "postgres_client" not in services
+    )
+    needs_data_table = (
+        "n8n-nodes-base.dataTable" in node_types and "data_table_store" not in services
+    )
+    if "n8n-nodes-base.emailSend" in node_types and "email_sender" not in services:
+        if os.environ.get("SMTP_HOST"):
+            services["email_sender"] = create_email_sender_from_env()
+    if needs_postgres or needs_data_table:
         engine = create_postgres_engine_from_env()
-        services["postgres_client"] = SQLAlchemyPostgresClient(engine)
-        services["data_table_store"] = SQLAlchemyDataTableStore(engine)
+        if "n8n-nodes-base.postgres" in node_types:
+            services.setdefault("postgres_client", SQLAlchemyPostgresClient(engine))
+        if "n8n-nodes-base.dataTable" in node_types:
+            services.setdefault("data_table_store", SQLAlchemyDataTableStore(engine))
         services["_database_engine"] = engine
-    if "n8n-nodes-base.emailSend" in node_types and os.environ.get("SMTP_HOST"):
-        services["email_sender"] = create_email_sender_from_env()
     return services
 
 
@@ -472,9 +484,7 @@ async def run_workflow(
 
     workflow = load_workflow()
     registry = default_node_converter_registry().build_runtime_registry(workflow)
-    runtime_services = build_services({node.type for node in workflow.nodes})
-    if services:
-        runtime_services.update(services)
+    runtime_services = build_services({node.type for node in workflow.nodes}, services)
     try:
         return await WorkflowExecutionEngine(registry).run(
             workflow,

@@ -142,9 +142,7 @@ async def run_workflow(
         node_overrides=ai_executors,
         ignored_node_names=auxiliary_names,
     )
-    runtime_services = build_services({node.type for node in workflow.nodes})
-    if services:
-        runtime_services.update(services)
+    runtime_services = build_services({node.type for node in workflow.nodes}, services)
     try:
         return await LangGraphExecutionEngine(registry).run(
             workflow,
