@@ -56,13 +56,13 @@ def test_cli_convert_help_describes_output_backend_and_strict_options(tmp_path: 
 
 
 def test_cli_validate_reads_a_real_fixture_and_reports_progress(tmp_path: Path) -> None:
-    """Проверить успешную CLI-команду и callback статуса на настоящем JSON."""
+    """Проверить успешную CLI-команду и короткий русский статус на настоящем JSON."""
     result = run_cli("validate", str(FIXTURES / "converters_basic.json"), cwd=tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert "Начато: workflow:validate" in result.stderr
-    assert "Готово: workflow:validate" in result.stderr
-    assert "проверен: 8 узлов" in result.stdout
+    assert "Проверяю сценарий..." in result.stderr
+    assert "workflow:validate" not in result.stderr
+    assert "Узлов: 8" in result.stdout
 
 
 def test_installed_console_script_validates_a_real_fixture(tmp_path: Path) -> None:
@@ -86,7 +86,7 @@ def test_installed_console_script_validates_a_real_fixture(tmp_path: Path) -> No
 
     assert result.returncode == 0, result.stderr
     assert "converter basic nodes" in result.stdout
-    assert "8 узлов" in result.stdout
+    assert "Узлов: 8" in result.stdout
 
 
 def test_cli_inspect_shows_graph_without_node_parameters(tmp_path: Path) -> None:
@@ -94,7 +94,7 @@ def test_cli_inspect_shows_graph_without_node_parameters(tmp_path: Path) -> None
     result = run_cli("inspect", str(FIXTURES / "converters_basic.json"), cwd=tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert "Workflow: converter basic nodes" in result.stdout
+    assert "Сценарий: converter basic nodes" in result.stdout
     assert "Manual" in result.stdout
     assert "связей: 7" in result.stdout
     assert '"parameters"' not in result.stdout
@@ -133,8 +133,8 @@ def test_cli_strict_validation_fails_for_unsupported_nodes(tmp_path: Path) -> No
     result = run_cli("validate", str(FIXTURES / "workflow_test.json"), "--strict", cwd=tmp_path)
 
     assert result.returncode == 1
-    assert "ОШИБКА UNSUPPORTED_NODE_TYPE" in result.stdout
-    assert "не прошёл проверку" in result.stderr
+    assert "Этот тип узла пока не поддерживается." in result.stderr
+    assert "Проверка не пройдена" in result.stderr
 
 
 def test_cli_convert_strict_stops_before_writing_unsupported_workflow(tmp_path: Path) -> None:
@@ -150,7 +150,7 @@ def test_cli_convert_strict_stops_before_writing_unsupported_workflow(tmp_path: 
     )
 
     assert result.returncode == 1
-    assert "UNSUPPORTED_NODE_TYPE" in result.stderr
+    assert "Этот тип узла пока не поддерживается." in result.stderr
     assert not output.exists()
 
 
@@ -170,5 +170,5 @@ def test_cli_convert_refuses_a_nonempty_output_directory(tmp_path: Path) -> None
     )
 
     assert result.returncode == 1
-    assert "не пуста" in result.stderr
+    assert "Папка результата не пуста" in result.stderr
     assert marker.read_text(encoding="utf-8") == "оставить"

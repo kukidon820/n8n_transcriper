@@ -13,6 +13,7 @@ from n8n_to_python.application.ports.workflow_generator import GenerationBackend
 from n8n_to_python.application.services.progress import ProgressEvent, ProgressReporter
 from n8n_to_python.application.services.workflow_conversion_service import (
     WorkflowConversionService,
+    WorkflowValidationFailed,
 )
 from n8n_to_python.application.services.workflow_converter import WorkflowConverter
 from n8n_to_python.application.services.workflow_inspector import WorkflowInspector
@@ -27,6 +28,20 @@ from n8n_to_python.infrastructure.sources.factory import workflow_source_from_lo
 
 logger = logging.getLogger(__name__)
 
+_PROGRESS_LABELS = {
+    "workflow:load": "Загружаю сценарий",
+    "workflow:validate": "Проверяю сценарий",
+    "workflow:validation-result": "",
+    "workflow:inspect": "Анализирую сценарий",
+    "conversion:python-core": "",
+    "conversion:langgraph": "",
+    "python-core:analyze-workflow": "Проверяю узлы",
+    "python-core:render-project": "Собираю Python-проект",
+    "langgraph:analyze-workflow": "Проверяю узлы",
+    "langgraph:render-project": "Собираю проект LangGraph",
+    "project:write-files": "Записываю файлы проекта",
+}
+
 app = typer.Typer(
     name="n8n-to-python",
     help="Преобразование n8n workflow в Python-проект.",
@@ -35,15 +50,12 @@ app = typer.Typer(
 
 
 def _progress_callback(event: ProgressEvent) -> None:
-    """Показывать пользователю понятный статус каждого Application-этапа."""
-    if event.status == "started":
-        message = f"Начато: {event.stage}"
-    elif event.status == "succeeded":
-        duration = event.duration_seconds or 0
-        message = f"Готово: {event.stage} ({duration:.2f} с)"
-    else:
-        message = f"Ошибка: {event.stage} ({event.error_type or 'неизвестная ошибка'})"
-    typer.echo(message, err=True)
+    """Показывать только короткое русское сообщение о начале этапа."""
+    if event.status != "started":
+        return
+    label = _PROGRESS_LABELS.get(event.stage, "Обрабатываю данные")
+    if label:
+        typer.echo(f"{label}...", err=True)
 
 
 def _build_command_services(
@@ -72,17 +84,55 @@ def _build_command_services(
 
 
 def _display_diagnostics(diagnostics: Sequence[WorkflowDiagnostic]) -> None:
-    """Форматировать структурированные замечания Application для терминала."""
+    """Показать короткие русские замечания без кодов и Pydantic-деталей."""
     for diagnostic in diagnostics:
-        label = "ОШИБКА" if diagnostic.severity == "error" else "ПРЕДУПРЕЖДЕНИЕ"
-        node = f" [{diagnostic.node_name}]" if diagnostic.node_name else ""
-        typer.echo(f"{label} {diagnostic.code}{node}: {diagnostic.message}")
+        logger.debug(
+            "Диагностика %s для узла %r: %s",
+            diagnostic.code,
+            diagnostic.node_name,
+            diagnostic.message,
+        )
+        label = "Ошибка" if diagnostic.severity == "error" else "Предупреждение"
+        node = f"Узел «{diagnostic.node_name}»: " if diagnostic.node_name else ""
+        message = _brief_diagnostic_message(diagnostic)
+        typer.echo(f"{label}: {node}{message}", err=True)
+
+
+def _brief_diagnostic_message(diagnostic: WorkflowDiagnostic) -> str:
+    """Перевести внутреннюю диагностику в короткое сообщение для пользователя."""
+    if diagnostic.code == "UNSUPPORTED_NODE_FEATURE":
+        if diagnostic.node_type == "n8n-nodes-base.code":
+            return (
+                "JavaScript-код не поддерживается; используйте Python или доработайте узел вручную."
+            )
+        return "Возможность узла пока не поддерживается; её нужно добавить вручную."
+
+    if diagnostic.code == "UNSUPPORTED_NODE_TYPE":
+        return "Этот тип узла пока не поддерживается."
+
+    if diagnostic.code == "UNSUPPORTED_NODE_VERSION":
+        return "Эта версия узла пока не поддерживается."
+
+    if diagnostic.code == "INVALID_NODE_CONFIGURATION":
+        if diagnostic.node_type == "n8n-nodes-base.emailSend":
+            if "fileAttachments" in diagnostic.message:
+                return (
+                    "Настройки письма выходят за поддерживаемый набор; "
+                    "ZIP-вложение нужно добавить вручную."
+                )
+            return "Некоторые настройки письма пока не поддерживаются."
+        return "Настройки узла выходят за поддерживаемый набор."
+
+    if diagnostic.code == "NO_SUPPORTED_TRIGGER":
+        return "Не найден поддерживаемый стартовый узел."
+
+    return "Проверьте этот узел и его настройки."
 
 
 @app.callback()
 def configure_cli() -> None:
     """Сообщить пользователю о запуске CLI."""
-    logger.info("Конвертер n8n workflow запущен")
+    logger.debug("Запущен конвертер workflow n8n.")
 
 
 @app.command()
@@ -97,9 +147,9 @@ def validate(
     report = asyncio.run(validator.execute(strict=strict))
     _display_diagnostics(report.diagnostics)
     if report.valid:
-        typer.echo(f"Workflow {report.workflow_name!r} проверен: {report.node_count} узлов.")
+        typer.echo(f"Проверка завершена: «{report.workflow_name}». Узлов: {report.node_count}.")
         return
-    typer.echo(f"Workflow {report.workflow_name!r} не прошёл проверку.", err=True)
+    typer.echo(f"Проверка не пройдена: «{report.workflow_name}».", err=True)
     raise typer.Exit(code=1)
 
 
@@ -110,16 +160,16 @@ def inspect(
     """Показать безопасную сводку workflow, узлов и связей."""
     _, _, inspector, _, _ = _build_command_services(source)
     report = asyncio.run(inspector.execute())
-    typer.echo(f"Workflow: {report.workflow_name}")
+    typer.echo(f"Сценарий: {report.workflow_name}")
     typer.echo(
         f"Узлов: {report.node_count}; связей: {report.connection_count}; "
-        f"триггеры: {', '.join(report.trigger_names) or 'нет'}"
+        f"стартовые узлы: {', '.join(report.trigger_names) or 'нет'}"
     )
     for node in report.nodes:
         support = "поддерживается" if node.supported else "есть ограничения"
-        trigger = ", trigger" if node.is_trigger else ""
+        trigger = ", запускающий узел" if node.is_trigger else ""
         typer.echo(
-            f"- {node.name}: {node.node_type} v{node.type_version:g}; "
+            f"- {node.name}: {node.node_type}, версия {node.type_version:g}; "
             f"связей {node.connection_count}; {support}{trigger}"
         )
     _display_diagnostics(report.diagnostics)
@@ -163,9 +213,10 @@ def convert(
         )
     )
     _display_diagnostics(result.validation.diagnostics)
+    backend_name = "Python Core" if backend is GenerationBackend.PYTHON_CORE else "LangGraph"
     typer.echo(
-        f"Создан проект {backend.value!r}: {result.file_count} файлов в "
-        f"{result.output_directory.expanduser()}"
+        f"Создан проект ({backend_name}): файлов {result.file_count}; "
+        f"папка: {result.output_directory.expanduser()}"
     )
 
 
@@ -174,9 +225,27 @@ def main() -> None:
     configure_logging()
     try:
         app()
+    except WorkflowValidationFailed as error:
+        _display_diagnostics(error.report.diagnostics)
+        typer.echo(
+            f"Преобразование остановлено: «{error.report.workflow_name}». "
+            "Исправьте отмеченные узлы.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from error
+    except typer.Exit:
+        raise
+    except FileExistsError as error:
+        logger.error("Папка результата не пуста. Укажите пустую папку.")
+        logger.debug("Подробности ошибки записи", exc_info=error)
+        raise typer.Exit(code=1) from error
+    except FileNotFoundError as error:
+        logger.error("Файл не найден. Проверьте путь.")
+        logger.debug("Подробности ошибки чтения", exc_info=error)
+        raise typer.Exit(code=1) from error
     except Exception as error:
-        logger.error("Не удалось выполнить команду: %s", error)
-        logger.debug("Подробная информация об ошибке", exc_info=True)
+        logger.error("Не удалось выполнить команду. Подробности записаны в файл журнала.")
+        logger.debug("Технические подробности ошибки", exc_info=error)
         raise typer.Exit(code=1) from error
 
 
