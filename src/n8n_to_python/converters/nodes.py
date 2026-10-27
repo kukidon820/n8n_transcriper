@@ -833,6 +833,13 @@ class LoopOverItemsExecutor:
 
 def default_node_converter_registry() -> NodeConverterRegistry:
     """Создать реестр ограниченных и явно версионированных адаптеров."""
+    from ..runtime.ai_types import AI_AGENT_TYPE, DEEPSEEK_MODEL_TYPE, OPENAI_MODEL_TYPE
+    from ..runtime.python_core_ai import (
+        DeepSeekChatModelParameters,
+        OpenAIChatModelParameters,
+        PythonCoreAIAgentParameters,
+        UnboundAIComponentExecutor,
+    )
     from .code_node import PythonCodeExecutor, PythonCodeParameters
     from .file_nodes import (
         CompressionExecutor,
@@ -864,6 +871,27 @@ def default_node_converter_registry() -> NodeConverterRegistry:
         ),
         ValidatedNodeConverter("n8n-nodes-base.merge", 3.2, MergeParameters, MergeAppendExecutor),
         ValidatedNodeConverter("n8n-nodes-base.code", 2, PythonCodeParameters, PythonCodeExecutor),
+        ValidatedNodeConverter(
+            AI_AGENT_TYPE,
+            2.2,
+            PythonCoreAIAgentParameters,
+            lambda _: UnboundAIComponentExecutor(),
+        ),
+        ValidatedNodeConverter(
+            DEEPSEEK_MODEL_TYPE,
+            1,
+            DeepSeekChatModelParameters,
+            lambda _: UnboundAIComponentExecutor(),
+        ),
+        *[
+            ValidatedNodeConverter(
+                OPENAI_MODEL_TYPE,
+                version,
+                OpenAIChatModelParameters,
+                lambda _: UnboundAIComponentExecutor(),
+            )
+            for version in (1, 1.1, 1.2, 1.3)
+        ],
         ValidatedNodeConverter(
             "n8n-nodes-base.splitInBatches", 3, LoopParameters, LoopOverItemsExecutor
         ),

@@ -27,10 +27,12 @@ from n8n_to_python.converters.nodes import default_node_converter_registry
 from n8n_to_python.converters.python_core import PythonCoreGenerator
 from n8n_to_python.infrastructure.project_writer import GeneratedProjectFileWriter
 from n8n_to_python.infrastructure.sources.factory import workflow_source_from_location
-from n8n_to_python.runtime.langgraph_agent import (
+from n8n_to_python.runtime.ai_types import (
     AI_AGENT_TYPE,
+    CALCULATOR_TOOL_TYPE,
     DEEPSEEK_MODEL_TYPE,
     OPENAI_MODEL_TYPE,
+    SIMPLE_MEMORY_TYPE,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,9 +92,20 @@ def _build_command_services(
     return loader, validator, inspector, converter, progress
 
 
-def _display_diagnostics(diagnostics: Sequence[WorkflowDiagnostic]) -> None:
+def _display_diagnostics(
+    diagnostics: Sequence[WorkflowDiagnostic],
+    *,
+    backend: GenerationBackend | None = None,
+) -> None:
     """Показать короткие русские замечания без кодов и Pydantic-деталей."""
     for diagnostic in diagnostics:
+        if (
+            backend is GenerationBackend.LANGGRAPH
+            and diagnostic.code == "UNSUPPORTED_NODE_TYPE"
+            and diagnostic.node_type in {AI_AGENT_TYPE, DEEPSEEK_MODEL_TYPE, OPENAI_MODEL_TYPE}
+        ):
+            # The successful LangGraph generator validates these nodes as part of the AI graph.
+            continue
         logger.debug(
             "Диагностика %s для узла %r: %s",
             diagnostic.code,
@@ -120,21 +133,29 @@ def _brief_diagnostic_message(diagnostic: WorkflowDiagnostic) -> str:
     if diagnostic.code == "UNSUPPORTED_NODE_TYPE":
         if diagnostic.node_type == AI_AGENT_TYPE:
             return (
-                "В Python Core AI Agent не выполняется. В LangGraph поддержан AI Agent v2.2 "
-                "с подключённой поддерживаемой моделью. validate проверяет узлы отдельно и не "
-                "проверяет AI-связи; для генерации укажите convert --backend langgraph."
+                "Python Core выполняет AI Agent v2.2 как один запрос к DeepSeek/OpenAI API. "
+                "Для agent loop, tools и memory используйте convert --backend langgraph."
             )
         if diagnostic.node_type == DEEPSEEK_MODEL_TYPE:
             return (
-                "DeepSeek Chat Model v1 не запускается как самостоятельный узел: она "
-                "используется как модель, подключённая к AI Agent v2.2 в LangGraph. "
-                "Общая проверка не анализирует AI-связи."
+                "DeepSeek Chat Model используется как подключённая модель для одного "
+                "AI API-вызова; отдельно как обычный узел она не запускается."
             )
         if diagnostic.node_type == OPENAI_MODEL_TYPE:
             return (
-                "OpenAI Chat Model поддержана как модель AI Agent v2.2 в LangGraph, "
-                "а не как самостоятельный узел. Для v1.3 задайте responsesApiEnabled=false. "
-                "validate не проверяет AI-связи; это делает генератор LangGraph."
+                "OpenAI Chat Model используется как подключённая модель для одного "
+                "AI API-вызова; отдельно как обычный узел она не запускается. "
+                "Для v1.3 задайте responsesApiEnabled=false."
+            )
+        if diagnostic.node_type == CALCULATOR_TOOL_TYPE:
+            return (
+                "Python Core не выполняет AI tools: он отправляет один запрос к модели без "
+                "инструментов. Для Calculator Tool используйте convert --backend langgraph."
+            )
+        if diagnostic.node_type == SIMPLE_MEMORY_TYPE:
+            return (
+                "Python Core не хранит память AI Agent. Для Simple Memory используйте "
+                "convert --backend langgraph."
             )
         node_type = diagnostic.node_type or "неизвестный"
         version = diagnostic.context.get("type_version", "не указана")
@@ -209,10 +230,18 @@ def configure_cli() -> None:
 def validate(
     source: Annotated[str, typer.Argument(help="Путь к .json или HTTP(S) ссылка на workflow.")],
     strict: Annotated[
-        bool, typer.Option("--strict", help="Считать предупреждения ошибками.")
+        bool,
+        typer.Option(
+            "--strict",
+            help="Считать предупреждения о неподдерживаемых узлах или настройках ошибками.",
+        ),
     ] = False,
 ) -> None:
-    """Проверить JSON, связи и общую поддержку узлов; backend здесь не выбирается."""
+    """Проверить workflow для режима «обычный Python»: JSON, связи и поддержку узлов.
+
+    Команда не создаёт проект. Чтобы проверить workflow для LangGraph и создать проект,
+    используйте convert с параметром --backend langgraph.
+    """
     _, validator, _, _, _ = _build_command_services(source)
     report = asyncio.run(validator.execute(strict=strict))
     _display_diagnostics(report.diagnostics)
@@ -254,7 +283,13 @@ def convert(
     ],
     backend: Annotated[
         GenerationBackend,
-        typer.Option(help="Backend проекта: python-core (по умолчанию) или langgraph."),
+        typer.Option(
+            "--backend",
+            help=(
+                "Способ генерации проекта: python-core — обычный Python (по умолчанию); "
+                "langgraph — с использованием библиотеки LangGraph."
+            ),
+        ),
     ] = GenerationBackend.PYTHON_CORE,
     project_name: Annotated[
         str | None,
@@ -262,10 +297,17 @@ def convert(
     ] = None,
     strict: Annotated[
         bool,
-        typer.Option("--strict", help="Считать предупреждения о поддержке ошибками."),
+        typer.Option(
+            "--strict",
+            help="Остановить генерацию при предупреждениях о неподдерживаемых узлах или настройках.",
+        ),
     ] = False,
 ) -> None:
-    """Создать Python Core или LangGraph проект; LangGraph задаётся флагом --backend."""
+    """Создать Python-проект из workflow.
+
+    Способ генерации задаётся параметром --backend: python-core (обычный Python, по умолчанию)
+    или langgraph (проект на LangGraph).
+    """
     loader, validator, _, converter_service, progress = _build_command_services(source)
     conversion = WorkflowConversionService(
         loader,
@@ -282,7 +324,7 @@ def convert(
             project_name=project_name,
         )
     )
-    _display_diagnostics(result.validation.diagnostics)
+    _display_diagnostics(result.validation.diagnostics, backend=backend)
     backend_name = "Python Core" if backend is GenerationBackend.PYTHON_CORE else "LangGraph"
     typer.echo(
         f"Создан проект ({backend_name}): файлов {result.file_count}; "

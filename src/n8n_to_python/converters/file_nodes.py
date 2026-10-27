@@ -35,12 +35,13 @@ _XLS_MIME_TYPE = "application/vnd.ms-excel"
 class CompressionParameters(_StrictParameters):
     """Поддерживаемые настройки ZIP/GZIP узла Compression."""
 
-    operation: Literal["compress", "decompress"]
+    # n8n Compression v1/v1.1 uses "decompress" when an export omits operation.
+    operation: Literal["compress", "decompress"] = "decompress"
     binary_property_name: str = Field(default="data", alias="binaryPropertyName")
     output_format: Literal["zip", "gzip"] = Field(default="zip", alias="outputFormat")
     file_name: str = Field(default="data", alias="fileName", min_length=1)
     binary_property_output: str = Field(default="data", alias="binaryPropertyOutput")
-    output_prefix: str = Field(default="file", alias="outputPrefix")
+    output_prefix: str = Field(default="file_", alias="outputPrefix")
     options: EmptyOptions = Field(default_factory=EmptyOptions)
 
 
@@ -354,11 +355,13 @@ class CompressionExecutor:
                 )
                 paired_input_indexes.append(item_index)
             else:
-                for extracted_name, extracted, mime_type in self._decompress(content):
+                for output_index, (extracted_name, extracted, mime_type) in enumerate(
+                    self._decompress(content)
+                ):
                     output_property = (
                         self._parameters.output_prefix
                         if self._parameters.output_format == "gzip"
-                        else f"{self._parameters.output_prefix}{extracted_name}"
+                        else f"{self._parameters.output_prefix}{output_index}"
                     )
                     output.append(
                         _replace_binary(

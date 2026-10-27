@@ -20,14 +20,15 @@ from pydantic import (
 
 from ..converters.expressions import N8nExpressionEvaluator
 from ..domain.models.workflow import Workflow, WorkflowNode
+from .ai_types import (
+    AI_AGENT_TYPE,
+    CALCULATOR_TOOL_TYPE,
+    DEEPSEEK_MODEL_TYPE,
+    OPENAI_MODEL_TYPE,
+    SIMPLE_MEMORY_TYPE,
+)
 from .executors import NodeExecutionContext
 from .models import NodeResult, WorkflowItem
-
-AI_AGENT_TYPE = "@n8n/n8n-nodes-langchain.agent"
-DEEPSEEK_MODEL_TYPE = "@n8n/n8n-nodes-langchain.lmChatDeepSeek"
-OPENAI_MODEL_TYPE = "@n8n/n8n-nodes-langchain.lmChatOpenAi"
-CALCULATOR_TOOL_TYPE = "@n8n/n8n-nodes-langchain.toolCalculator"
-SIMPLE_MEMORY_TYPE = "@n8n/n8n-nodes-langchain.memoryBufferWindow"
 
 
 class _StrictParameters(BaseModel):
