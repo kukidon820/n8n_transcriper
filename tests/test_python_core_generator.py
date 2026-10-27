@@ -83,6 +83,9 @@ async def test_python_core_generates_and_runs_a_real_branching_workflow(tmp_path
     manifest = tomllib.loads(project.files["pyproject.toml"])
     assert manifest["project"]["scripts"]["run-workflow"] == "generated_workflow.main:main"
     assert "pydantic>=2.0" in manifest["project"]["dependencies"]
+    assert "openpyxl>=3.1.5" in manifest["project"]["dependencies"]
+    assert "xlrd>=2.0.1" in manifest["project"]["dependencies"]
+    assert "xlwt>=1.3.0" in manifest["project"]["dependencies"]
     assert [(event.stage, event.status) for event in events] == [
         ("conversion:python-core", "started"),
         ("python-core:analyze-workflow", "started"),
@@ -157,7 +160,7 @@ async def test_generated_database_workflow_reports_missing_database_url(
 
     assert return_code != 0
     assert stdout == ""
-    assert "Не задана переменная окружения DATABASE_URL" in stderr
+    assert "config.toml" in stderr
 
 
 @pytest.mark.asyncio
@@ -197,12 +200,71 @@ async def test_generator_removes_credentials_and_redacts_secret_like_parameters(
     generated_contents = "\n".join(project.files.values())
     workflow_json = project.files["src/generated_workflow/workflow.json"]
     manual_guide = project.files["MANUAL_CHANGES.md"]
+    credentials_template = project.files["config.toml.example"]
     assert "private-token-value" not in generated_contents
     assert "private-credential-id" not in generated_contents
     assert "inline-secret-value" not in generated_contents
     assert "<SET_MANUALLY>" in workflow_json
     assert "Input fields.parameters.apiToken" in manual_guide
     assert "Manual (n8n-nodes-base.manualTrigger v1.0): exampleAuth" in manual_guide
+    assert '[credentials."Manual"]' in credentials_template
+    assert "exampleAuth" in credentials_template
+    assert tomllib.loads(credentials_template)["credentials"]["Manual"]["n8n_types"] == [
+        "exampleAuth"
+    ]
+    assert "config.toml" in project.files[".gitignore"]
+
+
+@pytest.mark.asyncio
+async def test_http_credential_type_generates_config_instead_of_manual_error() -> None:
+    """Accept generic n8n HTTP credentials and render an empty user-owned config entry."""
+    workflow = load_workflow("converters_http.json")
+    request_node = next(node for node in workflow.nodes if node.name == "Request")
+    request_node.parameters.update(
+        {"authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth"}
+    )
+
+    project = await PythonCoreGenerator().generate(workflow, progress=ProgressReporter())
+    config = tomllib.loads(project.files["config.toml.example"])
+
+    assert (
+        "REQUIRED_MANUAL_CHANGES = ()" in project.files["src/generated_workflow/manual_changes.py"]
+    )
+    assert config["credentials"]["Request"]["n8n_types"] == ["httpHeaderAuth"]
+    assert config["credentials"]["Request"]["headers"] == {}
+
+
+@pytest.mark.asyncio
+async def test_langgraph_generator_creates_an_empty_ai_provider_config_section() -> None:
+    """Generate a manual API-key entry for the supported DeepSeek model without n8n secrets."""
+    workflow = load_workflow("workflow_test.json")
+    project = await LangGraphGenerator().generate(workflow, progress=ProgressReporter())
+
+    model_node = next(
+        node for node in workflow.nodes if node.type == "@n8n/n8n-nodes-langchain.lmChatDeepSeek"
+    )
+    config = tomllib.loads(project.files["config.toml.example"])
+
+    assert config["credentials"][model_node.name]["n8n_types"] == ["deepSeekApi"]
+    assert config["credentials"][model_node.name]["api_key"] == ""
+    assert model_node.name not in project.files["MANUAL_CHANGES.md"]
+
+
+@pytest.mark.asyncio
+async def test_generator_preserves_ai_model_max_tokens_setting() -> None:
+    """Treat maxTokens as a generation limit, not as a credential to redact."""
+    workflow = load_workflow("workflow_test.json")
+    model_node = next(node for node in workflow.nodes if node.type.endswith("lmChatDeepSeek"))
+    model_node.parameters.setdefault("options", {})["maxTokens"] = 2500
+
+    project = await LangGraphGenerator().generate(workflow, progress=ProgressReporter())
+
+    generated_workflow = json.loads(project.files["src/generated_workflow/workflow.json"])
+    generated_model = next(
+        node for node in generated_workflow["nodes"] if node["name"] == model_node.name
+    )
+    assert generated_model["parameters"]["options"]["maxTokens"] == 2500
+    assert "maxTokens" not in project.files["MANUAL_CHANGES.md"]
 
 
 @pytest.mark.asyncio

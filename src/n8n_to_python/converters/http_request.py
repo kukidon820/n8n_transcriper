@@ -3,6 +3,7 @@
 import base64
 import json
 import mimetypes
+from collections.abc import Mapping
 from email.message import Message
 from pathlib import PurePosixPath
 from typing import Any, Literal, Self
@@ -84,11 +85,14 @@ class HttpResponseGroup(_StrictParameters):
 
 
 class HttpRequestParameters(_StrictParameters):
-    """Поднабор HTTP Request без credentials и с JSON body."""
+    """Поднабор HTTP Request с пользовательской конфигурацией credentials и JSON body."""
 
     method: Literal["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"] = "GET"
     url: str = Field(min_length=1)
-    authentication: Literal["none"] = "none"
+    authentication: str = "none"
+    generic_auth_type: str | None = Field(default=None, alias="genericAuthType")
+    node_credential_type: str | None = Field(default=None, alias="nodeCredentialType")
+    send_auth: bool | None = Field(default=None, alias="sendAuth")
     send_query: bool = Field(default=False, alias="sendQuery")
     query_parameters: HttpParameterList = Field(
         default_factory=HttpParameterList, alias="queryParameters"
@@ -98,6 +102,9 @@ class HttpRequestParameters(_StrictParameters):
         default_factory=HttpParameterList, alias="headerParameters"
     )
     send_body: bool = Field(default=False, alias="sendBody")
+    specify_body: Literal["json", "raw", "form-urlencoded", "multipart-form-data"] = Field(
+        default="json", alias="specifyBody"
+    )
     json_body: Any = Field(default=None, alias="jsonBody")
     options: HttpRequestOptions = Field(default_factory=HttpRequestOptions)
 
@@ -110,6 +117,8 @@ class HttpRequestParameters(_StrictParameters):
             raise ValueError("headerParameters заданы, но sendHeaders не включён.")
         if self.send_body and self.json_body is None:
             raise ValueError("sendBody=true требует jsonBody.")
+        if self.send_body and self.specify_body != "json":
+            raise ValueError("HTTP Request поддерживает только specifyBody=json.")
         if not self.send_body and self.json_body is not None:
             raise ValueError("jsonBody задан, но sendBody не включён.")
         return self
@@ -154,6 +163,11 @@ class HttpRequestExecutor:
                 headers = self._resolve_parameters(
                     self._parameters.header_parameters.parameters, item, item_index, context
                 )
+                auth, credential_headers, credential_query = self._resolve_credentials(
+                    node, context
+                )
+                headers.update(credential_headers)
+                query.update(credential_query)
                 body = (
                     self._expressions.evaluate(
                         self._parameters.json_body,
@@ -169,6 +183,7 @@ class HttpRequestExecutor:
                     url=url,
                     params=query,
                     headers=headers,
+                    auth=auth,
                     json=body,
                 ) as response:
                     if response.status >= 400 and not response_settings.never_error:
@@ -259,6 +274,86 @@ class HttpRequestExecutor:
             outputs=(tuple(output),),
             paired_input_indexes=(tuple(paired_input_indexes),),
         )
+
+    def _resolve_credentials(
+        self,
+        node: WorkflowNode,
+        context: NodeExecutionContext,
+    ) -> tuple[aiohttp.BasicAuth | None, dict[str, str], dict[str, str]]:
+        """Map user-entered credentials to aiohttp auth, headers, and query arguments."""
+        auth_requested = (
+            self._parameters.authentication.lower() != "none" or self._parameters.send_auth is True
+        )
+        if not auth_requested:
+            return None, {}, {}
+
+        all_credentials = context.services.get("credentials", {})
+        credentials = (
+            all_credentials.get(node.name, {}) if isinstance(all_credentials, Mapping) else {}
+        )
+        if not isinstance(credentials, Mapping):
+            raise UnsupportedNodeConfigurationError(
+                f"HTTP Request {node.name!r}: проверьте credentials в config.toml."
+            )
+
+        headers = self._string_mapping(credentials.get("headers"), node.name, "headers")
+        query = self._string_mapping(credentials.get("query"), node.name, "query")
+        auth_type = (
+            self._parameters.generic_auth_type
+            or self._parameters.node_credential_type
+            or str(credentials.get("type", ""))
+        ).lower()
+        header_name = credentials.get("header_name") or credentials.get("name")
+        header_value = credentials.get("header_value") or credentials.get("value")
+        query_name = credentials.get("query_name") or credentials.get("name")
+        query_value = credentials.get("query_value") or credentials.get("value")
+        token = (
+            credentials.get("token")
+            or credentials.get("api_key")
+            or credentials.get("apiKey")
+            or credentials.get("access_token")
+            or credentials.get("accessToken")
+        )
+        username = credentials.get("username") or credentials.get("user")
+        password = credentials.get("password")
+        basic_auth = None
+
+        if username or password:
+            if not username or not password:
+                raise UnsupportedNodeConfigurationError(
+                    f"HTTP Request {node.name!r}: заполните username и password в config.toml."
+                )
+            basic_auth = aiohttp.BasicAuth(str(username), str(password))
+
+        if header_name and header_value:
+            headers[str(header_name)] = str(header_value)
+        if query_name and query_value:
+            query[str(query_name)] = str(query_value)
+        if token:
+            if "query" in auth_type:
+                query.setdefault(str(query_name or "api_key"), str(token))
+            elif "header" in auth_type and header_name:
+                headers.setdefault(str(header_name), str(token))
+            else:
+                headers.setdefault("Authorization", f"Bearer {token}")
+
+        if not (basic_auth or headers or query):
+            raise UnsupportedNodeConfigurationError(
+                f"HTTP Request {node.name!r}: добавьте headers, query, token "
+                "или username/password в credentials секцию config.toml."
+            )
+        return basic_auth, headers, query
+
+    @staticmethod
+    def _string_mapping(value: Any, node_name: str, field_name: str) -> dict[str, str]:
+        """Validate and convert a user-provided HTTP header/query table to string pairs."""
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+            raise UnsupportedNodeConfigurationError(
+                f"HTTP Request {node_name!r}: credentials.{field_name} должен быть TOML-таблицей."
+            )
+        return {key: str(item) for key, item in value.items()}
 
     def _resolve_parameters(
         self,

@@ -1,8 +1,9 @@
-"""LangGraph execution for the verified n8n AI Agent + DeepSeek + Calculator subset."""
+"""LangGraph execution for supported n8n AI Agent chat model combinations."""
 
 import ast
 import json
 import os
+from collections.abc import Mapping
 from typing import Any, Literal, TypedDict
 
 import aiohttp
@@ -24,6 +25,7 @@ from .models import NodeResult, WorkflowItem
 
 AI_AGENT_TYPE = "@n8n/n8n-nodes-langchain.agent"
 DEEPSEEK_MODEL_TYPE = "@n8n/n8n-nodes-langchain.lmChatDeepSeek"
+OPENAI_MODEL_TYPE = "@n8n/n8n-nodes-langchain.lmChatOpenAi"
 CALCULATOR_TOOL_TYPE = "@n8n/n8n-nodes-langchain.toolCalculator"
 SIMPLE_MEMORY_TYPE = "@n8n/n8n-nodes-langchain.memoryBufferWindow"
 
@@ -37,22 +39,44 @@ class _StrictParameters(BaseModel):
 class _AgentOptions(_StrictParameters):
     system_message: str = Field(default="", alias="systemMessage")
     max_iterations: int = Field(default=6, alias="maxIterations", ge=1, le=20, strict=True)
+    enable_streaming: Literal[False] = Field(default=False, alias="enableStreaming")
 
 
 class _AgentParameters(_StrictParameters):
     prompt_type: Literal["define"] = Field(alias="promptType")
     text: str = Field(min_length=1)
     options: _AgentOptions = Field(default_factory=_AgentOptions)
+    has_output_parser: Literal[False] = Field(default=False, alias="hasOutputParser")
 
 
 class _DeepSeekOptions(_StrictParameters):
     temperature: float | None = Field(default=None, ge=0, le=2)
     top_p: float | None = Field(default=None, alias="topP", gt=0, le=1)
     max_tokens: int | None = Field(default=None, alias="maxTokens", ge=1, strict=True)
+    timeout: int | None = Field(default=None, ge=1, strict=True)
+    max_retries: int | None = Field(default=None, alias="maxRetries", ge=0, strict=True)
 
 
 class _DeepSeekParameters(_StrictParameters):
+    model: str | dict[str, Any] | None = None
     options: _DeepSeekOptions = Field(default_factory=_DeepSeekOptions)
+
+
+class _OpenAIOptions(_StrictParameters):
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, alias="topP", gt=0, le=1)
+    max_tokens: int | None = Field(default=None, alias="maxTokens", ge=1, strict=True)
+    timeout: int | None = Field(default=None, ge=1, strict=True)
+    max_retries: int | None = Field(default=None, alias="maxRetries", ge=0, strict=True)
+    base_url: AnyHttpUrl | None = Field(default=None, alias="baseURL")
+    frequency_penalty: float | None = Field(default=None, alias="frequencyPenalty", ge=-2, le=2)
+    presence_penalty: float | None = Field(default=None, alias="presencePenalty", ge=-2, le=2)
+
+
+class _OpenAIParameters(_StrictParameters):
+    model: str | dict[str, Any] = "gpt-4o-mini"
+    options: _OpenAIOptions = Field(default_factory=_OpenAIOptions)
+    responses_api_enabled: bool | None = Field(default=None, alias="responsesApiEnabled")
 
 
 class _MemoryParameters(_StrictParameters):
@@ -61,8 +85,8 @@ class _MemoryParameters(_StrictParameters):
     context_window_length: int = Field(alias="contextWindowLength", ge=1, le=40, strict=True)
 
 
-class _DeepSeekRuntimeSettings(BaseModel):
-    """Validate runtime-only DeepSeek settings without exposing the key in reprs."""
+class _ChatModelRuntimeSettings(BaseModel):
+    """Validate provider settings without exposing the API key in reprs."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -71,7 +95,7 @@ class _DeepSeekRuntimeSettings(BaseModel):
     model: str = Field(min_length=1)
 
 
-class _DeepSeekFunctionCall(BaseModel):
+class _FunctionCall(BaseModel):
     """One tool call returned by the OpenAI-compatible model API."""
 
     model_config = ConfigDict(extra="allow")
@@ -80,40 +104,40 @@ class _DeepSeekFunctionCall(BaseModel):
     arguments: str
 
 
-class _DeepSeekToolCall(BaseModel):
+class _ToolCall(BaseModel):
     """One validated function call in an assistant chat message."""
 
     model_config = ConfigDict(extra="allow")
 
     id: str = Field(min_length=1)
     type: Literal["function"]
-    function: _DeepSeekFunctionCall
+    function: _FunctionCall
 
 
-class _DeepSeekMessage(BaseModel):
+class _AssistantMessage(BaseModel):
     """Supported text-only assistant message returned by the model API."""
 
     model_config = ConfigDict(extra="allow")
 
     role: Literal["assistant"]
     content: str | None = None
-    tool_calls: list[_DeepSeekToolCall] = Field(default_factory=list)
+    tool_calls: list[_ToolCall] = Field(default_factory=list)
 
 
-class _DeepSeekChoice(BaseModel):
+class _ChatChoice(BaseModel):
     """The selected assistant choice from one model completion."""
 
     model_config = ConfigDict(extra="allow")
 
-    message: _DeepSeekMessage
+    message: _AssistantMessage
 
 
-class _DeepSeekResponse(BaseModel):
+class _ChatCompletionsResponse(BaseModel):
     """Validated subset of the OpenAI-compatible Chat Completions response."""
 
     model_config = ConfigDict(extra="allow")
 
-    choices: list[_DeepSeekChoice] = Field(min_length=1)
+    choices: list[_ChatChoice] = Field(min_length=1)
 
 
 class _CalculatorArguments(BaseModel):
@@ -170,10 +194,30 @@ class LangGraphAIAgentExecutor:
             raise UnsupportedAIAgentConfigurationError(
                 f"AI Agent {agent_node.name!r} поддержан только в версии 2.2."
             )
-        if model_node.type != DEEPSEEK_MODEL_TYPE or model_node.type_version != 1:
+        if model_node.type == DEEPSEEK_MODEL_TYPE and model_node.type_version == 1:
+            provider = "deepseek"
+        elif model_node.type == OPENAI_MODEL_TYPE and model_node.type_version in {
+            1,
+            1.1,
+            1.2,
+            1.3,
+        }:
+            provider = "openai"
+        else:
             raise UnsupportedAIAgentConfigurationError(
-                f"Модель {model_node.name!r} должна быть DeepSeek Chat Model v1."
+                f"Модель {model_node.name!r} ({model_node.type} v{model_node.type_version}) "
+                "не поддержана. Поддерживаются DeepSeek Chat Model v1 и OpenAI Chat Model "
+                "v1, v1.1, v1.2, v1.3."
             )
+        if model_node.type == OPENAI_MODEL_TYPE:
+            raw_responses_setting = model_node.parameters.get("responsesApiEnabled")
+            if raw_responses_setting is True or (
+                model_node.type_version >= 1.3 and raw_responses_setting is not False
+            ):
+                raise UnsupportedAIAgentConfigurationError(
+                    f"Модель {model_node.name!r}: Responses API пока не поддерживается. "
+                    "Отключите responsesApiEnabled, чтобы использовать Chat Completions."
+                )
         if tool_node is not None and (
             tool_node.type != CALCULATOR_TOOL_TYPE or tool_node.type_version != 1
         ):
@@ -189,7 +233,10 @@ class LangGraphAIAgentExecutor:
 
         try:
             self._agent_parameters = _AgentParameters.model_validate(agent_node.parameters)
-            self._model_parameters = _DeepSeekParameters.model_validate(model_node.parameters)
+            if provider == "openai":
+                self._model_parameters = _OpenAIParameters.model_validate(model_node.parameters)
+            else:
+                self._model_parameters = _DeepSeekParameters.model_validate(model_node.parameters)
             self._memory_parameters = (
                 _MemoryParameters.model_validate(memory_node.parameters)
                 if memory_node is not None
@@ -207,6 +254,7 @@ class LangGraphAIAgentExecutor:
         self.agent_node = agent_node
         self._workflow = workflow
         self._model_node = model_node
+        self._provider = provider
         self._tool_node = tool_node
         self._memory_node = memory_node
         self._evaluator = N8nExpressionEvaluator()
@@ -284,27 +332,57 @@ class LangGraphAIAgentExecutor:
             raise UnsupportedAIAgentConfigurationError(
                 f"AI executor {self.agent_node.name!r} нельзя применить к {node.name!r}."
             )
+        all_credentials = context.services.get("credentials", {})
+        model_credentials = (
+            all_credentials.get(self._model_node.name, {})
+            if isinstance(all_credentials, Mapping)
+            else {}
+        )
+        if not isinstance(model_credentials, Mapping):
+            model_credentials = {}
+        provider_env = self._provider.upper()
+        configured_model = model_credentials.get("model") or os.environ.get(f"{provider_env}_MODEL")
+        if not configured_model:
+            model_value = getattr(self._model_parameters, "model", None)
+            if isinstance(model_value, dict):
+                configured_model = model_value.get("value")
+            else:
+                configured_model = model_value
         runtime_settings = {
-            "api_key": context.services.get("deepseek_api_key")
-            or os.environ.get("DEEPSEEK_API_KEY"),
-            "base_url": context.services.get("deepseek_base_url")
-            or os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-            "model": context.services.get("deepseek_model")
-            or os.environ.get("DEEPSEEK_MODEL", "deepseek-flash"),
+            "api_key": context.services.get(f"{self._provider}_api_key")
+            or model_credentials.get("api_key")
+            or model_credentials.get("apiKey")
+            or model_credentials.get("token")
+            or os.environ.get(f"{provider_env}_API_KEY"),
+            "base_url": context.services.get(f"{self._provider}_base_url")
+            or model_credentials.get("base_url")
+            or model_credentials.get("baseURL")
+            or getattr(self._model_parameters.options, "base_url", None)
+            or os.environ.get(f"{provider_env}_BASE_URL")
+            or (
+                "https://api.openai.com/v1"
+                if self._provider == "openai"
+                else "https://api.deepseek.com"
+            ),
+            "model": context.services.get(f"{self._provider}_model")
+            or configured_model
+            or ("gpt-4o-mini" if self._provider == "openai" else "deepseek-flash"),
         }
         try:
-            settings = _DeepSeekRuntimeSettings.model_validate(runtime_settings)
+            settings = _ChatModelRuntimeSettings.model_validate(runtime_settings)
         except ValidationError as error:
+            credential_name = "OPENAI_API_KEY" if self._provider == "openai" else "DEEPSEEK_API_KEY"
             raise RuntimeError(
-                "Проверьте DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL и DEEPSEEK_MODEL "
-                "в окружении или runtime services."
+                f"Заполните credentials узла модели {self._model_node.name!r} в config.toml "
+                f"или проверьте {credential_name} и настройки провайдера."
             ) from error
         api_key = settings.api_key.get_secret_value()
         base_url = str(settings.base_url).rstrip("/")
         model_name = settings.model
 
         output_items: list[WorkflowItem] = []
-        timeout = aiohttp.ClientTimeout(total=60)
+        timeout_ms = self._model_parameters.options.timeout
+        timeout = aiohttp.ClientTimeout(total=(timeout_ms / 1000) if timeout_ms else 60)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for item_index, item in enumerate(items):
                 prompt = self._evaluator.evaluate(
@@ -385,7 +463,7 @@ class LangGraphAIAgentExecutor:
                     f"AI Agent {self.agent_node.name!r} превысил maxIterations="
                     f"{self._agent_parameters.options.max_iterations}."
                 )
-            response = await self._call_deepseek(
+            response = await self._call_chat_completions(
                 session=session,
                 base_url=base_url,
                 api_key=api_key,
@@ -408,9 +486,11 @@ class LangGraphAIAgentExecutor:
             messages_after_tools = list(state["messages"])
             for raw_tool_call in state["tool_calls"]:
                 try:
-                    tool_call = _DeepSeekToolCall.model_validate(raw_tool_call)
+                    tool_call = _ToolCall.model_validate(raw_tool_call)
                 except ValidationError as error:
-                    raise RuntimeError("DeepSeek вернул некорректный tool call.") from error
+                    raise RuntimeError(
+                        f"{self._provider} вернул некорректный tool call."
+                    ) from error
                 if tool_call.function.name != self._tool_name or self._tool_node is None:
                     raise RuntimeError(
                         f"AI Agent запросил неподключённый инструмент {tool_call.function.name!r}."
@@ -468,7 +548,7 @@ class LangGraphAIAgentExecutor:
         )
         return final_state["answer"]
 
-    async def _call_deepseek(
+    async def _call_chat_completions(
         self,
         *,
         session: aiohttp.ClientSession,
@@ -477,13 +557,14 @@ class LangGraphAIAgentExecutor:
         model_name: str,
         messages: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        """Send one OpenAI-compatible DeepSeek request and validate its response shape."""
+        """Send one Chat Completions request and validate its response shape."""
         body: dict[str, Any] = {
             "model": model_name,
             "messages": messages,
             "stream": False,
-            "thinking": {"type": "disabled"},
         }
+        if self._provider == "deepseek":
+            body["thinking"] = {"type": "disabled"}
         if self._tool_name is not None:
             body.update(
                 {
@@ -520,29 +601,44 @@ class LangGraphAIAgentExecutor:
             body["top_p"] = options.top_p
         if options.max_tokens is not None:
             body["max_tokens"] = options.max_tokens
+        if isinstance(options, _OpenAIOptions):
+            if options.frequency_penalty is not None:
+                body["frequency_penalty"] = options.frequency_penalty
+            if options.presence_penalty is not None:
+                body["presence_penalty"] = options.presence_penalty
 
         endpoint = base_url.rstrip("/") + "/chat/completions"
+        provider_name = "OpenAI" if self._provider == "openai" else "DeepSeek"
+        max_retries = options.max_retries or 0
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(
+                    endpoint,
+                    json=body,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ) as response:
+                    if response.status >= 500 and attempt < max_retries:
+                        await response.read()
+                        continue
+                    if response.status >= 400:
+                        raise RuntimeError(
+                            f"{provider_name} API вернул HTTP {response.status} для AI Agent "
+                            f"{self.agent_node.name!r}. Проверьте URL, модель и API key."
+                        )
+                    payload = await response.json()
+                    break
+            except (aiohttp.ClientError, TimeoutError) as error:
+                if attempt < max_retries:
+                    continue
+                raise RuntimeError(
+                    f"Не удалось выполнить запрос к {provider_name} для AI Agent "
+                    f"{self.agent_node.name!r}."
+                ) from error
         try:
-            async with session.post(
-                endpoint,
-                json=body,
-                headers={"Authorization": f"Bearer {api_key}"},
-            ) as response:
-                if response.status >= 400:
-                    raise RuntimeError(
-                        f"DeepSeek API вернул HTTP {response.status} для AI Agent "
-                        f"{self.agent_node.name!r}. Проверьте URL, модель и API key."
-                    )
-                payload = await response.json()
-        except aiohttp.ClientError as error:
-            raise RuntimeError(
-                f"Не удалось выполнить запрос DeepSeek для AI Agent {self.agent_node.name!r}."
-            ) from error
-        try:
-            validated_response = _DeepSeekResponse.model_validate(payload)
+            validated_response = _ChatCompletionsResponse.model_validate(payload)
         except ValidationError as error:
             raise RuntimeError(
-                "DeepSeek API вернул ответ, который не соответствует Chat Completions schema."
+                f"{provider_name} API вернул ответ, который не соответствует Chat Completions schema."
             ) from error
         return validated_response.model_dump(mode="json")
 

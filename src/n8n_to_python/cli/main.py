@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated
@@ -222,6 +223,7 @@ def convert(
 
 def main() -> None:
     """Настроить логи и запустить Typer CLI из консоли или IDE."""
+    _configure_console_encoding()
     configure_logging()
     try:
         app()
@@ -233,6 +235,7 @@ def main() -> None:
             err=True,
         )
         raise typer.Exit(code=1) from error
+
     except typer.Exit:
         raise
     except FileExistsError as error:
@@ -247,6 +250,14 @@ def main() -> None:
         logger.error("Не удалось выполнить команду. Подробности записаны в файл журнала.")
         logger.debug("Технические подробности ошибки", exc_info=error)
         raise typer.Exit(code=1) from error
+
+
+def _configure_console_encoding() -> None:
+    """Keep legacy Windows code pages from crashing on workflow names with Unicode symbols."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(errors="replace")
 
 
 if __name__ == "__main__":

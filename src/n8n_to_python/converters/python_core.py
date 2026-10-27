@@ -33,6 +33,7 @@ _EXTENSION_FILES = {
     "n8n-nodes-base.postgres": "src/n8n_to_python/converters/integrations.py",
     "n8n-nodes-base.emailSend": "src/n8n_to_python/converters/integrations.py",
     "n8n-nodes-base.compression": "src/n8n_to_python/converters/file_nodes.py",
+    "n8n-nodes-base.convertToFile": "src/n8n_to_python/converters/file_nodes.py",
     "n8n-nodes-base.extractFromFile": "src/n8n_to_python/converters/file_nodes.py",
 }
 
@@ -91,6 +92,8 @@ class PythonCoreGenerator(WorkflowGenerator):
                     ),
                     "src/generated_workflow/services.py": _SERVICES_SOURCE,
                     "src/generated_workflow/main.py": self._render_main_source(),
+                    "config.toml.example": self._render_config_template(workflow),
+                    ".gitignore": _GENERATED_GITIGNORE,
                 }
             )
         return GeneratedProject(files=files)
@@ -231,6 +234,8 @@ class PythonCoreGenerator(WorkflowGenerator):
     def _is_sensitive_key(name: str) -> bool:
         """Распознать распространённые названия полей, содержащих credential values."""
         normalized_name = re.sub(r"[^a-z0-9]", "", name.casefold())
+        if normalized_name.startswith("max") and "token" in normalized_name:
+            return False
         return any(marker in normalized_name for marker in _SENSITIVE_KEY_PARTS)
 
     @staticmethod
@@ -265,10 +270,13 @@ dependencies = [
     "aiohttp>=3.14.5",
     "aiosmtplib>=5.1.3",
     "asyncpg>=0.32.0",
+    "openpyxl>=3.1.5",
     "pydantic>=2.0",
     "pypdf>=6.21.2",
     "sqlalchemy[asyncio]>=2.1.6",
     "tzdata>=2026.5",
+    "xlrd>=2.0.1",
+    "xlwt>=1.3.0",
 ]
 
 [project.scripts]
@@ -306,10 +314,128 @@ uv run run-workflow
 
 Перед запуском прочитайте `MANUAL_CHANGES.md`. Если там перечислены неподдержанные узлы или параметры, проект намеренно завершится с ошибкой до выполнения workflow. После реализации/удаления этих функций отметьте их как закрытые в `src/generated_workflow/manual_changes.py`.
 
-Postgres и Data Table берут подключение из `DATABASE_URL`; Email использует SMTP-переменные `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` и `SMTP_USE_TLS`. Их сборка находится в `src/generated_workflow/services.py`. Не вставляйте секреты в `workflow.json`.
+Скопируйте `config.toml.example` в `config.toml` и заполните credentials и подключения. Runtime читает конфиг автоматически; `config.toml` игнорируется Git. Для совместимости также поддерживаются `DATABASE_URL`, `SMTP_*`, `DEEPSEEK_*` и `OPENAI_*`. Не вставляйте секреты в `workflow.json`.
 
 Для Webhook передайте payload через аргумент `initial_items` функции `run_workflow` в `src/generated_workflow/main.py`; проект сам не запускает постоянный HTTP-сервер.
 """
+
+    @staticmethod
+    def _render_config_template(workflow: Workflow) -> str:
+        """Create an empty local config template for credentials used by workflow nodes."""
+        credential_nodes: dict[str, tuple[list[str], str]] = {}
+        needs_database = any(node.type == "n8n-nodes-base.dataTable" for node in workflow.nodes)
+
+        for node in workflow.nodes:
+            raw_credentials = getattr(node, "credentials", None)
+            credential_types = (
+                sorted(str(name) for name in raw_credentials)
+                if isinstance(raw_credentials, dict)
+                else []
+            )
+            parameters = node.parameters
+            auth_mode = str(parameters.get("authentication", "none"))
+            if node.type == "n8n-nodes-base.httpRequest" and auth_mode.lower() != "none":
+                credential_types.append(
+                    str(
+                        parameters.get("genericAuthType")
+                        or parameters.get("nodeCredentialType")
+                        or auth_mode
+                    )
+                )
+            if node.type == "n8n-nodes-base.postgres":
+                credential_types.append("postgres")
+            elif node.type == "n8n-nodes-base.emailSend":
+                credential_types.append("smtp")
+            elif node.type.endswith("lmChatDeepSeek"):
+                credential_types.append("deepSeekApi")
+            elif node.type.endswith("lmChatOpenAi"):
+                credential_types.append("openAiApi")
+
+            credential_types = sorted(set(credential_types))
+            if credential_types:
+                credential_nodes[node.name] = (credential_types, node.type)
+
+        lines = [
+            "# Заполните файл вручную. Значения credentials из n8n сюда не копируются.",
+            "# config.toml игнорируется Git; этот пример можно хранить в репозитории.",
+        ]
+        for node_name, (credential_types, node_type) in credential_nodes.items():
+            lines.extend(["", f"[credentials.{json.dumps(node_name, ensure_ascii=False)}]"])
+            lines.append(f"n8n_types = {json.dumps(credential_types, ensure_ascii=False)}")
+
+            if node_type == "n8n-nodes-base.httpRequest":
+                lines.extend(
+                    [
+                        "# Настройте headers/query, token/api_key или username/password.",
+                        "headers = {}",
+                        "query = {}",
+                        'header_name = ""',
+                        'header_value = ""',
+                        'query_name = ""',
+                        'query_value = ""',
+                        'token = ""',
+                        'api_key = ""',
+                        'username = ""',
+                        'password = ""',
+                    ]
+                )
+            elif node_type == "n8n-nodes-base.postgres":
+                lines.extend(
+                    [
+                        'url = "" # Можно указать полный postgresql+asyncpg URL.',
+                        'host = ""',
+                        "port = 5432",
+                        'database = ""',
+                        'username = ""',
+                        'password = ""',
+                    ]
+                )
+            elif node_type == "n8n-nodes-base.emailSend":
+                lines.extend(
+                    [
+                        'host = ""',
+                        "port = 587",
+                        'username = ""',
+                        'password = ""',
+                        "start_tls = true",
+                        "use_tls = false",
+                    ]
+                )
+            elif node_type.endswith("lmChatDeepSeek"):
+                lines.extend(
+                    [
+                        'api_key = ""',
+                        'base_url = "https://api.deepseek.com"',
+                        'model = "" # Пустое значение использует модель из workflow.',
+                    ]
+                )
+            elif node_type.endswith("lmChatOpenAi"):
+                lines.extend(
+                    [
+                        'api_key = ""',
+                        'base_url = "https://api.openai.com/v1"',
+                        'model = "" # Пустое значение использует модель из workflow.',
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        "# Добавьте сюда дополнительные поля этой credential-схемы.",
+                        "values = {}",
+                        "headers = {}",
+                    ]
+                )
+
+        if needs_database:
+            lines.extend(
+                [
+                    "",
+                    "[database]",
+                    "# Data Table хранит данные в вашей PostgreSQL базе.",
+                    'url = ""',
+                ]
+            )
+        return "\n".join(lines) + "\n"
 
     @staticmethod
     def _render_manual_actions(actions: list[str]) -> str:
@@ -357,10 +483,16 @@ Postgres и Data Table берут подключение из `DATABASE_URL`; Em
 
         lines.extend(["## Секреты и credentials", ""])
         if removed_credentials:
-            lines.append("Ссылки n8n credentials удалены из `workflow.json`:")
+            lines.append(
+                "Ссылки credentials безопасно удалены из `workflow.json`; для узлов подготовлены "
+                "пустые секции в `config.toml.example`. Заполните их в `config.toml`."
+            )
             lines.extend(f"- {credential}" for credential in removed_credentials)
         else:
-            lines.append("Ссылки n8n credentials не найдены или отсутствовали.")
+            lines.append(
+                "Ссылки credentials из экспорта не найдены. Для HTTP Request, AI, Postgres и Email "
+                "можно задать значения вручную в `config.toml.example`."
+            )
         if redacted_fields:
             lines.extend(
                 [
@@ -373,9 +505,8 @@ Postgres и Data Table берут подключение из `DATABASE_URL`; Em
         lines.extend(
             [
                 "",
-                "Не добавляйте секреты в `workflow.json`. Для штатных integrations задайте "
-                "переменные окружения; собственный способ подключения можно внести в "
-                "`src/generated_workflow/services.py`.",
+                "Не добавляйте секреты в `workflow.json`. Секретные значения храните в локальном "
+                "`config.toml`, который уже исключён из Git.",
                 "",
                 "## Где расширять поведение",
                 "",
@@ -402,49 +533,154 @@ def _project_slug(workflow_name: str) -> str:
     return slug or "generated-n8n-workflow"
 
 
-_SERVICES_SOURCE = '''"""Подключение внешних сервисов через переменные окружения."""
+_GENERATED_GITIGNORE = """# Локальные credentials и конфигурация
+config.toml
+.env
+
+# Python и uv
+.venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+"""
+
+
+_SERVICES_SOURCE = '''"""Подключение внешних сервисов из config.toml или переменных окружения."""
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
-from n8n_to_python.infrastructure.database import create_postgres_engine_from_env
-from n8n_to_python.infrastructure.email_sender import create_email_sender_from_env
+from sqlalchemy.engine import URL
+from pydantic import ValidationError
+
+from n8n_to_python.domain.models.workflow import Workflow
+from n8n_to_python.infrastructure.database import create_postgres_engine
+from n8n_to_python.infrastructure.email_sender import (
+    AioSMTPEmailSender,
+    SMTPSettings,
+    create_email_sender_from_env,
+)
 from n8n_to_python.infrastructure.postgres_client import SQLAlchemyPostgresClient
 from n8n_to_python.infrastructure.stores.sqlalchemy_data_table_store import (
     SQLAlchemyDataTableStore,
 )
+from n8n_to_python.runtime.user_config import load_user_config
+
+
+def _credential_values(credentials: Mapping[str, Any], node_name: str) -> Mapping[str, Any]:
+    values = credentials.get(node_name, {})
+    return values if isinstance(values, Mapping) else {}
+
+
+def _postgres_url(values: Mapping[str, Any]) -> str | URL | None:
+    url = values.get("url")
+    if isinstance(url, str) and url.strip():
+        return url
+    host = values.get("host")
+    database = values.get("database") or values.get("dbname")
+    username = values.get("username") or values.get("user")
+    if not host or not database or username is None:
+        return None
+    try:
+        port = int(values.get("port", 5432))
+    except (TypeError, ValueError):
+        raise ValueError("Postgres port в config.toml должен быть числом.") from None
+    return URL.create(
+        "postgresql+asyncpg",
+        username=str(username),
+        password=str(values.get("password", "")),
+        host=str(host),
+        port=port,
+        database=str(database),
+    )
+
+
+def _smtp_sender(values: Mapping[str, Any]) -> AioSMTPEmailSender | None:
+    host = values.get("host")
+    if not host:
+        return None
+    try:
+        settings = SMTPSettings.model_validate(
+            {
+                "host": host,
+                "port": values.get("port", 587),
+                "username": values.get("username") or values.get("user"),
+                "password": values.get("password") or None,
+                "start_tls": values.get("start_tls", values.get("startTls", True)),
+                "use_tls": values.get(
+                    "use_tls", values.get("useTls", values.get("secure", False))
+                ),
+            }
+        )
+    except ValidationError:
+        raise ValueError("Проверьте SMTP credentials в config.toml для этого узла.") from None
+    return AioSMTPEmailSender(settings)
 
 
 def build_services(
-    node_types: set[str],
+    workflow: Workflow,
     overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Собрать сервисы по переменным окружения и сохранить внедрённые адаптеры."""
+    """Build runtime adapters and expose validated per-node credential tables."""
     services: dict[str, Any] = dict(overrides or {})
-    needs_postgres = (
-        "n8n-nodes-base.postgres" in node_types and "postgres_client" not in services
+    config_path = Path(__file__).parents[2] / "config.toml"
+    config = load_user_config(config_path)
+    credentials = services.setdefault("credentials", config.credentials)
+    database_settings = config.database
+    database_engines = []
+    postgres_clients: dict[str, SQLAlchemyPostgresClient] = {}
+    email_senders: dict[str, AioSMTPEmailSender] = {}
+
+    for node in workflow.nodes:
+        node_credentials = _credential_values(credentials, node.name)
+        if node.type == "n8n-nodes-base.postgres" and "postgres_client" not in services:
+            database_url = _postgres_url(node_credentials)
+            if database_url is not None:
+                engine = create_postgres_engine(database_url)
+                database_engines.append(engine)
+                postgres_clients[node.name] = SQLAlchemyPostgresClient(engine)
+        elif node.type == "n8n-nodes-base.emailSend" and "email_sender" not in services:
+            sender = _smtp_sender(node_credentials)
+            if sender is not None:
+                email_senders[node.name] = sender
+
+    node_types = {node.type for node in workflow.nodes}
+    needs_database = bool(
+        node_types.intersection({"n8n-nodes-base.postgres", "n8n-nodes-base.dataTable"})
     )
-    needs_data_table = (
-        "n8n-nodes-base.dataTable" in node_types and "data_table_store" not in services
+    shared_database_url = (
+        database_settings.get("url")
+        or os.environ.get("DATABASE_URL")
     )
+    if needs_database and shared_database_url:
+        shared_engine = create_postgres_engine(str(shared_database_url))
+        database_engines.append(shared_engine)
+        if "n8n-nodes-base.postgres" in node_types and "postgres_client" not in services:
+            services["postgres_client"] = SQLAlchemyPostgresClient(shared_engine)
+        if "n8n-nodes-base.dataTable" in node_types and "data_table_store" not in services:
+            services["data_table_store"] = SQLAlchemyDataTableStore(shared_engine)
+    elif "n8n-nodes-base.dataTable" in node_types and "data_table_store" not in services:
+        raise RuntimeError("Заполните [database].url в config.toml для узла Data Table.")
+
+    if postgres_clients:
+        services["postgres_clients_by_node"] = postgres_clients
+    if email_senders:
+        services["email_senders_by_node"] = email_senders
     if "n8n-nodes-base.emailSend" in node_types and "email_sender" not in services:
         if os.environ.get("SMTP_HOST"):
             services["email_sender"] = create_email_sender_from_env()
-    if needs_postgres or needs_data_table:
-        engine = create_postgres_engine_from_env()
-        if "n8n-nodes-base.postgres" in node_types:
-            services.setdefault("postgres_client", SQLAlchemyPostgresClient(engine))
-        if "n8n-nodes-base.dataTable" in node_types:
-            services.setdefault("data_table_store", SQLAlchemyDataTableStore(engine))
-        services["_database_engine"] = engine
+    if database_engines:
+        services["_database_engines"] = database_engines
     return services
 
 
 async def close_services(services: dict[str, Any]) -> None:
-    """Закрыть созданный SQLAlchemy engine после выполнения workflow."""
-    engine = services.get("_database_engine")
-    if engine is not None:
+    """Close all SQLAlchemy engines created for this workflow run."""
+    for engine in services.get("_database_engines", []):
         await engine.dispose()
 '''
 
@@ -486,7 +722,7 @@ async def run_workflow(
 
     workflow = load_workflow()
     registry = default_node_converter_registry().build_runtime_registry(workflow)
-    runtime_services = build_services({node.type for node in workflow.nodes}, services)
+    runtime_services = build_services(workflow, services)
     try:
         return await WorkflowExecutionEngine(registry).run(
             workflow,

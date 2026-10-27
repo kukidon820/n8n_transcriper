@@ -2,7 +2,7 @@
 
 import os
 
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -18,9 +18,18 @@ def create_postgres_engine_from_env(
     if not database_url:
         raise RuntimeError(f"Не задана переменная окружения {variable_name}.")
 
+    return create_postgres_engine(database_url, variable_name=variable_name)
+
+
+def create_postgres_engine(
+    database_url: str | URL,
+    *,
+    variable_name: str = "DATABASE_URL",
+) -> AsyncEngine:
+    """Создать SQLAlchemy async engine из URL или Pydantic-конфига подключения."""
     try:
-        parsed_url = make_url(database_url)
-    except ArgumentError:
+        parsed_url = database_url if isinstance(database_url, URL) else make_url(database_url)
+    except (ArgumentError, TypeError):
         raise ValueError(f"{variable_name} содержит некорректный SQLAlchemy URL.") from None
     if parsed_url.drivername == "postgresql":
         parsed_url = parsed_url.set(drivername="postgresql+asyncpg")

@@ -1,5 +1,6 @@
 """Подтверждение команд Typer реальными локальными workflow и subprocess-вызовами."""
 
+import json
 import os
 import subprocess
 import sys
@@ -12,24 +13,49 @@ PROJECT_ROOT = Path(__file__).parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def run_cli(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    *arguments: str,
+    cwd: Path,
+    python_io_encoding: str = "utf-8",
+    capture_encoding: str = "utf-8",
+) -> subprocess.CompletedProcess[str]:
     """Запустить установленную точку входа как отдельный пользовательский процесс."""
     environment = os.environ.copy()
     project_src = str(PROJECT_ROOT / "src")
     environment["PYTHONPATH"] = os.pathsep.join(
         filter(None, (project_src, environment.get("PYTHONPATH")))
     )
-    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONIOENCODING"] = python_io_encoding
     return subprocess.run(
         [sys.executable, "-m", "n8n_to_python.cli.main", *arguments],
         cwd=cwd,
         env=environment,
         capture_output=True,
         text=True,
-        encoding="utf-8",
+        encoding=capture_encoding,
         timeout=60,
         check=False,
     )
+
+
+def test_cli_replaces_symbols_missing_from_legacy_windows_code_page(tmp_path: Path) -> None:
+    """Validate a workflow with an arrow in its title under a strict cp1251 console."""
+    workflow = json.loads((FIXTURES / "converters_basic.json").read_text(encoding="utf-8"))
+    workflow["name"] = "Workflow → with Unicode title"
+    source = tmp_path / "unicode-title.json"
+    source.write_text(json.dumps(workflow, ensure_ascii=False), encoding="utf-8")
+
+    result = run_cli(
+        "validate",
+        str(source),
+        cwd=tmp_path,
+        python_io_encoding="cp1251:strict",
+        capture_encoding="cp1251",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Workflow ? with Unicode title" in result.stdout
+    assert "UnicodeEncodeError" not in result.stderr
 
 
 def test_cli_help_lists_the_three_workflow_commands(tmp_path: Path) -> None:
