@@ -65,6 +65,30 @@ def test_cli_validate_reads_a_real_fixture_and_reports_progress(tmp_path: Path) 
     assert "проверен: 8 узлов" in result.stdout
 
 
+def test_installed_console_script_validates_a_real_fixture(tmp_path: Path) -> None:
+    """Проверить entry point из pyproject после установки проекта через uv."""
+    executable_name = "n8n-to-python.exe" if os.name == "nt" else "n8n-to-python"
+    executable = Path(sys.executable).with_name(executable_name)
+    assert executable.is_file(), "Установите entry point командой `uv sync --locked`."
+
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "utf-8"
+    result = subprocess.run(
+        [str(executable), "validate", str(FIXTURES / "converters_basic.json")],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "converter basic nodes" in result.stdout
+    assert "8 узлов" in result.stdout
+
+
 def test_cli_inspect_shows_graph_without_node_parameters(tmp_path: Path) -> None:
     """Проверить безопасное описание узлов и отсутствие вывода параметров."""
     result = run_cli("inspect", str(FIXTURES / "converters_basic.json"), cwd=tmp_path)
