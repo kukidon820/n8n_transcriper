@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from n8n_to_python.application.models.diagnostic import WorkflowDiagnostic
-from n8n_to_python.cli.main import _brief_diagnostic_message
+from n8n_to_python.application.ports.workflow_generator import GenerationBackend
+from n8n_to_python.cli.main import _brief_diagnostic_message, _display_diagnostics
 
 PROJECT_ROOT = Path(__file__).parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -84,12 +85,28 @@ def test_cli_convert_help_describes_output_backend_and_strict_options(tmp_path: 
     assert "--strict" in result.stdout
 
 
-def test_cli_validate_help_explains_that_backend_is_not_selected(tmp_path: Path) -> None:
-    """Explain why validate can warn about AI nodes supported by LangGraph."""
+def test_cli_validate_help_explains_python_core_check_and_langgraph_conversion(
+    tmp_path: Path,
+) -> None:
+    """Explain which generation mode validate checks and how to select LangGraph."""
     result = run_cli("validate", "--help", cwd=tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert "backend здесь не выбирается" in result.stdout
+    help_text = " ".join(result.stdout.replace("│", " ").split())
+    assert "поддержку узлов" in help_text
+    assert "обычный Python" in help_text
+    assert "--backend langgraph" in help_text
+
+
+def test_cli_convert_help_explains_generation_modes_in_russian(tmp_path: Path) -> None:
+    """Describe backend choices as generation modes in the user's language."""
+    result = run_cli("convert", "--help", cwd=tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    help_text = " ".join(result.stdout.replace("│", " ").split())
+    assert "Способ генерации проекта" in help_text
+    assert "обычный Python" in help_text
+    assert "библиотеки LangGraph" in help_text
 
 
 def test_cli_explains_that_node_names_do_not_control_support() -> None:
@@ -108,6 +125,23 @@ def test_cli_explains_that_node_names_do_not_control_support() -> None:
     assert "n8n-nodes-base.convertToFile" in message
     assert "1.1" in message
     assert "переименование узла" in message
+
+
+def test_langgraph_convert_does_not_show_python_core_ai_warnings(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Do not print Python Core-only AI warnings after LangGraph generation succeeds."""
+    diagnostic = WorkflowDiagnostic(
+        severity="warning",
+        code="UNSUPPORTED_NODE_TYPE",
+        message="AI Agent is not supported by Python Core.",
+        node_name="AI Agent",
+        node_type="@n8n/n8n-nodes-langchain.agent",
+    )
+
+    _display_diagnostics((diagnostic,), backend=GenerationBackend.LANGGRAPH)
+
+    assert capsys.readouterr().err == ""
 
 
 def test_cli_explains_supported_node_versions() -> None:
@@ -242,8 +276,9 @@ def test_cli_strict_validation_fails_for_unsupported_nodes(tmp_path: Path) -> No
     result = run_cli("validate", str(FIXTURES / "workflow_test.json"), "--strict", cwd=tmp_path)
 
     assert result.returncode == 1
-    assert "В Python Core AI Agent не выполняется" in result.stderr
-    assert "для генерации укажите convert --backend langgraph" in result.stderr
+    assert "Python Core не выполняет AI tools" in result.stderr
+    assert "Calculator Tool" in result.stderr
+    assert "Для Simple Memory используйте convert --backend langgraph" in result.stderr
     assert "Проверка не пройдена" in result.stderr
     assert "Traceback" not in result.stderr
 
@@ -261,7 +296,7 @@ def test_cli_convert_strict_stops_before_writing_unsupported_workflow(tmp_path: 
     )
 
     assert result.returncode == 1
-    assert "В Python Core AI Agent не выполняется" in result.stderr
+    assert "Python Core не выполняет AI tools" in result.stderr
     assert "Traceback" not in result.stderr
     assert not output.exists()
 

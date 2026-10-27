@@ -11,6 +11,7 @@ from ..application.models.generated_project import GeneratedProject
 from ..application.ports.workflow_generator import GenerationBackend, WorkflowGenerator
 from ..application.services.progress import ProgressReporter
 from ..domain.models.workflow import Workflow
+from ..runtime.python_core_ai import inspect_python_core_ai_workflow
 from .nodes import NodeConverterRegistry, default_node_converter_registry
 
 _SENSITIVE_KEY_PARTS = (
@@ -105,8 +106,11 @@ class PythonCoreGenerator(WorkflowGenerator):
 
     def _inspect_workflow(self, workflow: Workflow) -> list[str]:
         """Собрать точные ошибки/предупреждения по неподдержанным узлам и конфигурациям."""
-        actions: list[str] = []
+        ai_plan = inspect_python_core_ai_workflow(workflow)
+        actions = list(ai_plan.manual_changes)
         for node in workflow.nodes:
+            if node.name in ai_plan.handled_node_names:
+                continue
             for diagnostic in self._converter_registry.inspect_node(node):
                 extension_file = _EXTENSION_FILES.get(
                     node.type, "src/n8n_to_python/converters/nodes.py"
@@ -317,6 +321,12 @@ uv run run-workflow
 Скопируйте `config.toml.example` в `config.toml` и заполните credentials и подключения. Runtime читает конфиг автоматически; `config.toml` игнорируется Git. Для совместимости также поддерживаются `DATABASE_URL`, `SMTP_*`, `DEEPSEEK_*` и `OPENAI_*`. Не вставляйте секреты в `workflow.json`.
 
 Для Webhook передайте payload через аргумент `initial_items` функции `run_workflow` в `src/generated_workflow/main.py`; проект сам не запускает постоянный HTTP-сервер.
+
+## AI Agent
+
+Python Core поддерживает один обычный Chat Completions вызов на каждый входной item для AI Agent v2.2 с одной подключённой DeepSeek Chat Model v1 или OpenAI Chat Model v1–v1.3. Ответ модели сохраняется в `json.output`. Ключ, URL и имя модели задайте в `config.toml` в секции credentials подключённой модели; также поддерживаются `DEEPSEEK_*` и `OPENAI_*` переменные окружения.
+
+Этот режим не запускает agent loop, tools, memory, streaming или output parser. `options.maxIterations` считывается для совместимости с экспортом n8n, но не влияет на одинарный API-вызов. Если workflow подключает Calculator Tool или Simple Memory, генератор перечислит это в `MANUAL_CHANGES.md`; для выполнения таких AI-графов используйте LangGraph.
 """
 
     @staticmethod
@@ -696,6 +706,7 @@ from n8n_to_python.converters.nodes import default_node_converter_registry
 from n8n_to_python.domain.models.workflow import Workflow
 from n8n_to_python.runtime.engine import WorkflowExecutionEngine
 from n8n_to_python.runtime.models import ExecutionResult, WorkflowItem
+from n8n_to_python.runtime.python_core_ai import build_python_core_ai_executors
 
 from .manual_changes import REQUIRED_MANUAL_CHANGES
 from .services import build_services, close_services
@@ -721,7 +732,12 @@ async def run_workflow(
         )
 
     workflow = load_workflow()
-    registry = default_node_converter_registry().build_runtime_registry(workflow)
+    ai_executors, auxiliary_ai_nodes = build_python_core_ai_executors(workflow)
+    registry = default_node_converter_registry().build_runtime_registry(
+        workflow,
+        node_overrides=ai_executors,
+        ignored_node_names=auxiliary_ai_nodes,
+    )
     runtime_services = build_services(workflow, services)
     try:
         return await WorkflowExecutionEngine(registry).run(

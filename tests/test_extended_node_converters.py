@@ -54,6 +54,53 @@ def binary_item(content: bytes, *, name: str = "input.bin") -> WorkflowItem:
     )
 
 
+def test_compression_defaults_to_decompress_when_export_omits_operation() -> None:
+    """Match n8n Compression v1/v1.1 exports where decompress is the default operation."""
+    parameters = CompressionParameters.model_validate({"binaryPropertyName": "archive"})
+
+    assert parameters.operation == "decompress"
+    assert parameters.binary_property_name == "archive"
+    assert parameters.output_prefix == "file_"
+
+
+@pytest.mark.asyncio
+async def test_default_zip_decompression_produces_n8n_file_zero_binary_field() -> None:
+    """Use n8n's default operation and binary field naming for a ZIP export."""
+    archive_bytes = BytesIO()
+    with zipfile.ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("tasks.csv", "name\nAda\n")
+
+    node = WorkflowNode(
+        id="unzip",
+        name="ZIP - Decompress for AI",
+        type="n8n-nodes-base.compression",
+        typeVersion=1.1,
+        position=(0, 0),
+        parameters={"binaryPropertyName": "archive"},
+    )
+    item = WorkflowItem(
+        json={},
+        binary={
+            "archive": {
+                "data": base64.b64encode(archive_bytes.getvalue()).decode("ascii"),
+                "fileName": "tasks.zip",
+                "mimeType": "application/zip",
+            }
+        },
+    )
+    result = await CompressionExecutor(
+        CompressionParameters.model_validate(node.parameters)
+    ).execute(
+        node,
+        (item,),
+        NodeExecutionContext(input_port=None, invocation_number=1, state={}),
+    )
+
+    extracted = result.outputs[0][0].binary["file_0"]
+    assert extracted["fileName"] == "tasks.csv"
+    assert base64.b64decode(extracted["data"]) == b"name\nAda\n"
+
+
 @pytest.mark.asyncio
 async def test_python_native_code_runs_in_the_graph() -> None:
     """Run a Python Code node using n8n's _items variable and return shape."""
@@ -225,9 +272,9 @@ async def test_zip_decompression_keeps_links_when_archives_expand_differently() 
 
     assert result.paired_input_indexes == ((0, 0, 1),)
     assert [item.binary.keys() for item in result.outputs[0]] == [
-        {"data", "unpacked_one.txt"},
-        {"data", "unpacked_two.txt"},
-        {"data", "unpacked_three.txt"},
+        {"data", "unpacked_0"},
+        {"data", "unpacked_1"},
+        {"data", "unpacked_0"},
     ]
 
 
@@ -237,7 +284,7 @@ async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
     workflow = load_workflow("converters_files.json")
     extract = next(node for node in workflow.nodes if node.name == "Extract")
     extract.parameters["operation"] = "csv"
-    extract.parameters["binaryPropertyName"] = "unpacked_records.csv"
+    extract.parameters["binaryPropertyName"] = "unpacked_0"
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     csv_result = await WorkflowExecutionEngine(registry).run(
         workflow,
@@ -266,7 +313,7 @@ async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
     writer.add_blank_page(width=72, height=72)
     writer.write(pdf_bytes)
     extract.parameters["operation"] = "pdf"
-    extract.parameters["binaryPropertyName"] = "unpacked_blank.pdf"
+    extract.parameters["binaryPropertyName"] = "unpacked_0"
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     pdf_result = await WorkflowExecutionEngine(registry).run(
         workflow,
