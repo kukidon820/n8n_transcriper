@@ -15,6 +15,7 @@ from .errors import (
     NodeExecutionError,
 )
 from .executors import NodeExecutionContext, NodeExecutorRegistry
+from .expression_context import build_expression_services, expression_services_for_node
 from .models import (
     ExecutionResult,
     NodeExecutionRecord,
@@ -65,7 +66,7 @@ class WorkflowExecutionEngine:
         """Выполнить trigger-узлы с опциональными входными данными и адаптерами."""
         plan = self._planner.build(workflow, self._registry)
         start_items = initial_items or {}
-        runtime_services = services or {}
+        runtime_services = build_expression_services(workflow, services)
         trigger_names = plan.trigger_names
         if initial_items is not None:
             unknown = set(initial_items) - set(trigger_names)
@@ -88,6 +89,7 @@ class WorkflowExecutionEngine:
         total_invocations = 0
         run_state: dict[str, Any] = {}
         node_outputs: dict[str, list[WorkflowItem]] = {}
+        node_output_runs: dict[str, list[tuple[tuple[WorkflowItem, ...] | None, ...]]] = {}
 
         while queue:
             if total_invocations >= self._settings.max_node_executions:
@@ -105,9 +107,10 @@ class WorkflowExecutionEngine:
                 input_port=invocation.input_port,
                 invocation_number=invocation_counts[node.name],
                 state=run_state,
-                services=runtime_services,
+                services=expression_services_for_node(runtime_services, node, input_snapshot),
                 input_items=input_snapshot,
                 node_outputs={name: tuple(values) for name, values in node_outputs.items()},
+                node_output_runs={name: tuple(values) for name, values in node_output_runs.items()},
             )
 
             try:
@@ -145,6 +148,9 @@ class WorkflowExecutionEngine:
                 )
             )
 
+            run_output_batches: list[tuple[WorkflowItem, ...] | None] = [
+                None for _ in result.outputs
+            ]
             for output_index, batch in enumerate(result.outputs):
                 if batch is None:
                     continue
@@ -160,6 +166,7 @@ class WorkflowExecutionEngine:
                     lineage[node.name] = history_offset + item_index
                     linked_batch.append(item.model_copy(update={"lineage": lineage}))
                 linked_items = tuple(linked_batch)
+                run_output_batches[output_index] = linked_items
                 output_history.extend(linked_items)
 
                 targets = plan.outgoing.get((node.name, output_index), ())
@@ -183,6 +190,8 @@ class WorkflowExecutionEngine:
                             input_port=target.target_input,
                         )
                     )
+
+            node_output_runs.setdefault(node.name, []).append(tuple(run_output_batches))
 
         incomplete_merges = {
             key: value

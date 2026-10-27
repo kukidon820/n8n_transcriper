@@ -8,6 +8,8 @@ from ..domain.models.workflow import WorkflowNode
 from .errors import UnsupportedNodeTypeError
 from .models import NodeResult, RuntimeInputPort, WorkflowItem
 
+NodeOutputBatch = tuple[tuple[WorkflowItem, ...] | None, ...]
+
 
 @dataclass(frozen=True, slots=True)
 class NodeExecutionContext:
@@ -19,6 +21,7 @@ class NodeExecutionContext:
     services: Mapping[str, Any] = field(default_factory=dict)
     input_items: tuple[WorkflowItem, ...] = ()
     node_outputs: Mapping[str, tuple[WorkflowItem, ...]] = field(default_factory=dict)
+    node_output_runs: Mapping[str, tuple[NodeOutputBatch, ...]] = field(default_factory=dict)
 
 
 class NodeExecutor(Protocol):
