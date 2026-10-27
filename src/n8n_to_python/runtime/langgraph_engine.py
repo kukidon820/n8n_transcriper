@@ -16,6 +16,7 @@ from .errors import (
     NoTriggerNodesError,
 )
 from .executors import NodeExecutionContext, NodeExecutorRegistry
+from .expression_context import build_expression_services, expression_services_for_node
 from .models import (
     ExecutionResult,
     NodeExecutionRecord,
@@ -46,6 +47,7 @@ class LangGraphWorkflowState(TypedDict):
     invocation_counts: dict[str, int]
     run_state: dict[str, Any]
     node_outputs: dict[str, list[WorkflowItem]]
+    node_output_runs: dict[str, list[tuple[tuple[WorkflowItem, ...] | None, ...]]]
     services: dict[str, Any]
     executions: list[NodeExecutionRecord]
     terminal_outputs: list[TerminalOutput]
@@ -146,7 +148,8 @@ class LangGraphExecutionEngine:
             "invocation_counts": {},
             "run_state": {},
             "node_outputs": {},
-            "services": dict(services or {}),
+            "node_output_runs": {},
+            "services": build_expression_services(workflow, services),
             "executions": [],
             "terminal_outputs": [],
         }
@@ -181,10 +184,13 @@ class LangGraphExecutionEngine:
                 input_port=state["input_port"],
                 invocation_number=counts[node.name],
                 state=state["run_state"],
-                services=state["services"],
+                services=expression_services_for_node(state["services"], node, items),
                 input_items=items,
                 node_outputs={
                     name: tuple(values) for name, values in state["node_outputs"].items()
+                },
+                node_output_runs={
+                    name: tuple(values) for name, values in state["node_output_runs"].items()
                 },
             )
             try:
@@ -218,6 +224,12 @@ class LangGraphExecutionEngine:
             pending = list(state["pending_invocations"])
             terminal_outputs = list(state["terminal_outputs"])
             node_outputs = {name: list(values) for name, values in state["node_outputs"].items()}
+            node_output_runs = {
+                name: list(values) for name, values in state["node_output_runs"].items()
+            }
+            run_output_batches: list[tuple[WorkflowItem, ...] | None] = [
+                None for _ in result.outputs
+            ]
             for output_index, batch in enumerate(result.outputs):
                 if batch is None:
                     continue
@@ -232,6 +244,7 @@ class LangGraphExecutionEngine:
                     lineage[node.name] = history_offset + item_index
                     linked_batch.append(item.model_copy(update={"lineage": lineage}))
                 linked_items = tuple(linked_batch)
+                run_output_batches[output_index] = linked_items
                 history.extend(linked_items)
                 if not linked_items:
                     continue
@@ -256,10 +269,13 @@ class LangGraphExecutionEngine:
                         )
                     )
 
+            node_output_runs.setdefault(node.name, []).append(tuple(run_output_batches))
+
             return {
                 "invocation_counts": counts,
                 "run_state": state["run_state"],
                 "node_outputs": node_outputs,
+                "node_output_runs": node_output_runs,
                 "executions": executions,
                 "terminal_outputs": terminal_outputs,
                 "pending_invocations": tuple(pending),
