@@ -1,6 +1,7 @@
-"""LangGraph backend for the supported single-active-path n8n runtime subset."""
+"""LangGraph-backed execution of n8n main-flow graphs."""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -9,6 +10,7 @@ from ..domain.models.workflow import Workflow, WorkflowNode
 from .engine import WorkflowExecutionEngine
 from .errors import (
     ExecutionLimitExceededError,
+    IncompleteMergeError,
     InvalidNodeOutputError,
     NodeExecutionError,
     NoTriggerNodesError,
@@ -25,30 +27,36 @@ from .models import (
 from .planner import ExecutionPlan, ExecutionPlanner
 
 
+@dataclass(frozen=True, slots=True)
+class _Invocation:
+    """One scheduled call to an n8n node."""
+
+    node_name: str
+    items: tuple[WorkflowItem, ...]
+    input_port: RuntimeInputPort | None
+
+
 class LangGraphWorkflowState(TypedDict):
     """Mutable state passed between LangGraph nodes during one workflow run."""
 
     current_items: tuple[WorkflowItem, ...]
     input_port: RuntimeInputPort | None
+    current_node_name: str | None
+    pending_invocations: tuple[_Invocation, ...]
     invocation_counts: dict[str, int]
     run_state: dict[str, Any]
     node_outputs: dict[str, list[WorkflowItem]]
     services: dict[str, Any]
     executions: list[NodeExecutionRecord]
     terminal_outputs: list[TerminalOutput]
-    next_node_name: str | None
-
-
-class UnsupportedLangGraphWorkflowError(ValueError):
-    """Raised when the graph cannot preserve a workflow's active routing semantics."""
 
 
 class LangGraphExecutionEngine:
-    """Execute supported n8n main-flow transitions as LangGraph nodes and edges.
+    """Execute n8n main-flow transitions with asynchronous LangGraph nodes.
 
-    Each n8n node becomes a LangGraph node. Conditional edges follow the active
-    output selected by the node executor. The current backend deliberately rejects
-    simultaneous fan-out because a correct join/reducer contract is not implemented.
+    A dispatcher schedules one n8n node invocation at a time in FIFO order. This
+    keeps branch fan-out deterministic and lets stateful join nodes such as Merge
+    receive every input before their output is scheduled.
     """
 
     def __init__(
@@ -85,30 +93,32 @@ class LangGraphExecutionEngine:
                 raise ValueError("При передаче initial_items укажите имя trigger-узла.")
         if not trigger_names:
             raise NoTriggerNodesError("Workflow не содержит доступного trigger-узла.")
-        if len(trigger_names) != 1:
-            raise UnsupportedLangGraphWorkflowError(
-                "LangGraph backend пока запускает по одному trigger-узлу за раз. "
-                "Передайте initial_items только для нужного trigger."
-            )
 
-        runnable_names = self._reachable_node_names(plan)
+        runnable_names = self._reachable_node_names(plan, trigger_names)
         graph_keys = {name: f"n8n_node_{index}" for index, name in enumerate(runnable_names)}
         builder = StateGraph(LangGraphWorkflowState)
 
-        async def select_trigger(state: LangGraphWorkflowState) -> dict[str, Any]:
-            trigger_name = trigger_names[0]
+        async def dispatch(state: LangGraphWorkflowState) -> dict[str, Any]:
+            """Select the next FIFO invocation or finish after checking joins."""
+            pending = list(state["pending_invocations"])
+            if not pending:
+                self._raise_if_incomplete_merges(state["run_state"])
+                return {"current_node_name": None}
+
+            invocation = pending.pop(0)
             return {
-                "next_node_name": trigger_name,
-                "current_items": tuple(start_items.get(trigger_name, ())),
-                "input_port": None,
+                "pending_invocations": tuple(pending),
+                "current_node_name": invocation.node_name,
+                "current_items": self._copy_items(invocation.items),
+                "input_port": invocation.input_port,
             }
 
-        builder.add_node("select_trigger", select_trigger)
-        builder.add_edge(START, "select_trigger")
+        builder.add_node("dispatch", dispatch)
+        builder.add_edge(START, "dispatch")
         builder.add_conditional_edges(
-            "select_trigger",
-            lambda state: state["next_node_name"],
-            graph_keys,
+            "dispatch",
+            lambda state: state["current_node_name"] or "__end__",
+            {**graph_keys, "__end__": END},
         )
 
         for node_name in runnable_names:
@@ -116,29 +126,33 @@ class LangGraphExecutionEngine:
             executor = self._registry.get(node)
             builder.add_node(
                 graph_keys[node_name],
-                self._build_node_function(node, executor, plan, graph_keys),
+                self._build_node_function(node, executor, plan),
             )
-            builder.add_conditional_edges(
-                graph_keys[node_name],
-                lambda state: state["next_node_name"] or "__end__",
-                {**graph_keys, "__end__": END},
-            )
+            builder.add_edge(graph_keys[node_name], "dispatch")
 
         graph = builder.compile()
         initial_state: LangGraphWorkflowState = {
             "current_items": (),
             "input_port": None,
+            "current_node_name": None,
+            "pending_invocations": tuple(
+                _Invocation(
+                    node_name=name,
+                    items=tuple(start_items.get(name, ())),
+                    input_port=None,
+                )
+                for name in trigger_names
+            ),
             "invocation_counts": {},
             "run_state": {},
             "node_outputs": {},
             "services": dict(services or {}),
             "executions": [],
             "terminal_outputs": [],
-            "next_node_name": None,
         }
         final_state = await graph.ainvoke(
             initial_state,
-            config={"recursion_limit": self._max_node_executions + 10},
+            config={"recursion_limit": self._max_node_executions * 2 + 10},
         )
         return ExecutionResult(
             executions=tuple(final_state["executions"]),
@@ -150,7 +164,6 @@ class LangGraphExecutionEngine:
         node: WorkflowNode,
         executor: Any,
         plan: ExecutionPlan,
-        graph_keys: Mapping[str, str],
     ):
         """Create the asynchronous LangGraph node that runs one n8n executor."""
 
@@ -202,9 +215,8 @@ class LangGraphExecutionEngine:
                 )
             )
 
-            next_edges: list[tuple[int, tuple[WorkflowItem, ...], str, RuntimeInputPort]] = []
+            pending = list(state["pending_invocations"])
             terminal_outputs = list(state["terminal_outputs"])
-            terminal_candidates: list[tuple[int, tuple[WorkflowItem, ...]]] = []
             node_outputs = {name: list(values) for name, values in state["node_outputs"].items()}
             for output_index, batch in enumerate(result.outputs):
                 if batch is None:
@@ -223,63 +235,66 @@ class LangGraphExecutionEngine:
                 history.extend(linked_items)
                 if not linked_items:
                     continue
+
                 targets = plan.outgoing.get((node.name, output_index), ())
                 if not targets:
-                    terminal_candidates.append((output_index, self._copy_items(linked_items)))
+                    terminal_outputs.append(
+                        TerminalOutput(
+                            node_name=node.name,
+                            output_index=output_index,
+                            items=self._copy_items(linked_items),
+                        )
+                    )
                     continue
+
                 for target in targets:
-                    next_edges.append(
-                        (
-                            output_index,
-                            self._copy_items(linked_items),
-                            target.target_node,
-                            target.target_input,
+                    pending.append(
+                        _Invocation(
+                            node_name=target.target_node,
+                            items=self._copy_items(linked_items),
+                            input_port=target.target_input,
                         )
                     )
 
-            if len(next_edges) + len(terminal_candidates) > 1:
-                raise UnsupportedLangGraphWorkflowError(
-                    f"Узел {node.name!r} активировал несколько переходов. "
-                    "LangGraph backend пока поддерживает один активный main-переход "
-                    "за вызов; fan-out и синхронизация нескольких ветвей не реализованы."
-                )
-
-            update: dict[str, Any] = {
+            return {
                 "invocation_counts": counts,
                 "run_state": state["run_state"],
                 "node_outputs": node_outputs,
                 "executions": executions,
                 "terminal_outputs": terminal_outputs,
-                "next_node_name": None,
+                "pending_invocations": tuple(pending),
+                "current_node_name": None,
             }
-            if terminal_candidates:
-                output_index, output_items = terminal_candidates[0]
-                terminal_outputs.append(
-                    TerminalOutput(
-                        node_name=node.name,
-                        output_index=output_index,
-                        items=output_items,
-                    )
-                )
-                update["terminal_outputs"] = terminal_outputs
-            elif next_edges:
-                _, output_items, target_name, target_input = next_edges[0]
-                update.update(
-                    {
-                        "next_node_name": target_name,
-                        "current_items": output_items,
-                        "input_port": target_input,
-                    }
-                )
-            return update
 
         return execute_node
 
     @staticmethod
-    def _reachable_node_names(plan: ExecutionPlan) -> tuple[str, ...]:
-        """Return nodes reachable from a trigger through any declared main output."""
+    def _raise_if_incomplete_merges(run_state: Mapping[str, Any]) -> None:
+        """Fail when the graph ends while a Merge node is still waiting for inputs."""
+        incomplete_merges = {
+            key: value
+            for key, value in run_state.items()
+            if key.startswith("merge-append:") and isinstance(value, dict)
+        }
+        if not incomplete_merges:
+            return
+
+        pending = "; ".join(
+            f"{key.removeprefix('merge-append:')}: missing input ports "
+            f"{sorted(set(range(value['expected'])) - set(value['received']))} "
+            f"(received {sorted(value['received'])})"
+            for key, value in incomplete_merges.items()
+        )
+        raise IncompleteMergeError(f"Merge append завершился без всех входов: {pending}.")
+
+    @staticmethod
+    def _reachable_node_names(
+        plan: ExecutionPlan,
+        trigger_names: Sequence[str],
+    ) -> tuple[str, ...]:
+        """Return nodes reachable from the selected triggers through `main` edges."""
         found: set[str] = set()
-        pending = list(plan.trigger_names)
+        pending = list(trigger_names)
         while pending:
             name = pending.pop()
             if name in found:
