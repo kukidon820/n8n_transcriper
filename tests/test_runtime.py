@@ -53,10 +53,9 @@ class FixtureTriggerExecutor:
         items: tuple[WorkflowItem, ...],
         context: NodeExecutionContext,
     ) -> NodeResult:
-        """Вернуть начальный item на единственный выход trigger-узла."""
-        assert not items
+        """Вернуть явно переданные items или настроенный начальный item."""
         assert context.input_port is None
-        return NodeResult(outputs=((self.item,),))
+        return NodeResult(outputs=(items or (self.item,),))
 
 
 class FixturePassExecutor:
@@ -218,6 +217,100 @@ async def test_runtime_runs_triggered_linear_graph_and_returns_terminal_items() 
     ]
     assert result.terminal_outputs[0].node_name == "Finish"
     assert result.terminal_outputs[0].items[0].json_data == {"count": 0, "value": "start"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filename",
+    ["runtime_linear.json", "runtime_branching.json", "runtime_fanout.json", "runtime_loop.json"],
+)
+async def test_langgraph_matches_python_core_on_runtime_fixtures(filename: str) -> None:
+    """Keep invocation order, branch outputs, loops, and terminal items consistent."""
+    workflow = load_workflow(filename)
+    registry = make_registry(
+        trigger=FixtureTriggerExecutor(),
+        branch=FixtureBranchExecutor(),
+        mutation=FixtureMutationExecutor(),
+        increment=FixtureIncrementExecutor(),
+        loop=FixtureLoopExecutor(),
+    )
+
+    core_result = await WorkflowExecutionEngine(registry).run(workflow)
+    langgraph_result = await LangGraphExecutionEngine(registry).run(workflow)
+
+    assert langgraph_result == core_result
+
+
+def make_multi_trigger_workflow() -> Workflow:
+    """Build a two-trigger graph whose FIFO schedule is easy to inspect."""
+    return Workflow.model_validate(
+        {
+            "name": "Multiple trigger runtime graph",
+            "nodes": [
+                {
+                    "name": "Trigger A",
+                    "type": "fixture.trigger",
+                    "typeVersion": 1,
+                    "position": [0, 0],
+                },
+                {
+                    "name": "Trigger B",
+                    "type": "fixture.trigger",
+                    "typeVersion": 1,
+                    "position": [0, 100],
+                },
+                {
+                    "name": "Finish",
+                    "type": "fixture.pass",
+                    "typeVersion": 1,
+                    "position": [200, 0],
+                },
+            ],
+            "connections": {
+                "Trigger A": {"main": [[{"node": "Finish", "type": "main", "index": 0}]]},
+                "Trigger B": {"main": [[{"node": "Finish", "type": "main", "index": 0}]]},
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_both_runtimes_start_each_trigger_once_by_default() -> None:
+    """Schedule all configured triggers in workflow order when none is selected."""
+    workflow = make_multi_trigger_workflow()
+    registry = make_registry(trigger=FixtureTriggerExecutor())
+
+    core_result = await WorkflowExecutionEngine(registry).run(workflow)
+    langgraph_result = await LangGraphExecutionEngine(registry).run(workflow)
+
+    assert langgraph_result == core_result
+    assert [record.node_name for record in langgraph_result.executions] == [
+        "Trigger A",
+        "Trigger B",
+        "Finish",
+        "Finish",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_both_runtimes_can_select_a_trigger_and_pass_its_initial_items() -> None:
+    """An explicit initial_items map selects trigger names and supplies their input."""
+    workflow = make_multi_trigger_workflow()
+    registry = make_registry(trigger=FixtureTriggerExecutor())
+    initial_items = {"Trigger B": (WorkflowItem(json={"source": "selected"}),)}
+
+    core_result = await WorkflowExecutionEngine(registry).run(
+        workflow,
+        initial_items=initial_items,
+    )
+    langgraph_result = await LangGraphExecutionEngine(registry).run(
+        workflow,
+        initial_items=initial_items,
+    )
+
+    assert langgraph_result == core_result
+    assert [record.node_name for record in langgraph_result.executions] == ["Trigger B", "Finish"]
+    assert langgraph_result.terminal_outputs[0].items[0].json_data == {"source": "selected"}
 
 
 @pytest.mark.asyncio
@@ -411,28 +504,31 @@ async def test_runtime_executes_loop_back_edges_until_done_output() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_rejects_workflow_without_registered_trigger() -> None:
+@pytest.mark.parametrize("engine_type", [WorkflowExecutionEngine, LangGraphExecutionEngine])
+async def test_runtime_rejects_workflow_without_registered_trigger(engine_type) -> None:
     """Workflow без trigger не запускается неявно от произвольного узла."""
-    engine = WorkflowExecutionEngine(make_registry())
+    engine = engine_type(make_registry())
 
     with pytest.raises(NoTriggerNodesError, match="не содержит узла"):
         await engine.run(load_workflow("runtime_no_trigger.json"))
 
 
 @pytest.mark.asyncio
-async def test_runtime_fails_when_executed_node_has_no_registered_executor() -> None:
+@pytest.mark.parametrize("engine_type", [WorkflowExecutionEngine, LangGraphExecutionEngine])
+async def test_runtime_fails_when_executed_node_has_no_registered_executor(engine_type) -> None:
     """Незарегистрированный тип не пропускается молча во время запуска."""
     registry = NodeExecutorRegistry({"fixture.trigger": FixtureTriggerExecutor()})
-    engine = WorkflowExecutionEngine(registry)
+    engine = engine_type(registry)
 
     with pytest.raises(UnsupportedNodeTypeError, match="Transform"):
         await engine.run(load_workflow("runtime_linear.json"))
 
 
 @pytest.mark.asyncio
-async def test_runtime_wraps_node_failure_and_keeps_original_cause() -> None:
+@pytest.mark.parametrize("engine_type", [WorkflowExecutionEngine, LangGraphExecutionEngine])
+async def test_runtime_wraps_node_failure_and_keeps_original_cause(engine_type) -> None:
     """Ошибка узла останавливает граф и доступна как причина NodeExecutionError."""
-    engine = WorkflowExecutionEngine(
+    engine = engine_type(
         make_registry(
             trigger=FixtureTriggerExecutor(),
             failure=FixtureFailureExecutor(),
@@ -448,16 +544,18 @@ async def test_runtime_wraps_node_failure_and_keeps_original_cause() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_stops_cycles_at_configured_execution_limit() -> None:
+@pytest.mark.parametrize("engine_type", [WorkflowExecutionEngine, LangGraphExecutionEngine])
+async def test_runtime_stops_cycles_at_configured_execution_limit(engine_type) -> None:
     """Защитный лимит прерывает незавершающийся графовый цикл."""
-    engine = WorkflowExecutionEngine(
-        make_registry(
-            trigger=FixtureTriggerExecutor(),
-            increment=FixtureIncrementExecutor(),
-            loop=FixtureInfiniteLoopExecutor(),
-        ),
-        settings=RuntimeSettings(max_node_executions=3),
+    registry = make_registry(
+        trigger=FixtureTriggerExecutor(),
+        increment=FixtureIncrementExecutor(),
+        loop=FixtureInfiniteLoopExecutor(),
     )
+    if engine_type is WorkflowExecutionEngine:
+        engine = WorkflowExecutionEngine(registry, settings=RuntimeSettings(max_node_executions=3))
+    else:
+        engine = LangGraphExecutionEngine(registry, max_node_executions=3)
 
     with pytest.raises(ExecutionLimitExceededError, match="лимит в 3"):
         await engine.run(load_workflow("runtime_loop.json"))
