@@ -3,6 +3,16 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class OutgoingEmailAttachment(BaseModel):
+    """A binary file attached to an outgoing message."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file_name: str = Field(min_length=1)
+    mime_type: str = Field(default="application/octet-stream", min_length=1)
+    content: bytes
+
+
 class OutgoingEmail(BaseModel):
     """Секреты SMTP хранятся отдельно, а здесь остаются только данные письма."""
 
@@ -16,6 +26,7 @@ class OutgoingEmail(BaseModel):
     subject: str
     text: str | None = None
     html: str | None = None
+    attachments: tuple[OutgoingEmailAttachment, ...] = ()
 
     @model_validator(mode="after")
     def require_body(self) -> "OutgoingEmail":

@@ -9,6 +9,26 @@ logger = logging.getLogger(__name__)
 # Маркер позволяет при повторном запуске IDE заменить свои handlers,
 # не добавляя дублирующие сообщения в консоль и файл.
 _HANDLER_MARKER = "n8n_to_python_logging_handler"
+_RUSSIAN_LEVEL_NAMES = {
+    "DEBUG": "ОТЛАДКА",
+    "INFO": "ИНФОРМАЦИЯ",
+    "WARNING": "ПРЕДУПРЕЖДЕНИЕ",
+    "ERROR": "ОШИБКА",
+    "CRITICAL": "КРИТИЧЕСКАЯ ОШИБКА",
+}
+
+
+class RussianLevelFormatter(logging.Formatter):
+    """Подставить русское название уровня, сохранив исходную запись для других handlers."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Форматировать запись с локализованным уровнем."""
+        original_level_name = record.levelname
+        record.levelname = _RUSSIAN_LEVEL_NAMES.get(original_level_name, original_level_name)
+        try:
+            return super().format(record)
+        finally:
+            record.levelname = original_level_name
 
 
 def configure_logging() -> Path:
@@ -28,11 +48,11 @@ def configure_logging() -> Path:
             root_logger.removeHandler(handler)
             handler.close()
 
-    formatter = logging.Formatter(
+    formatter = RussianLevelFormatter(
         fmt="%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    console_formatter = logging.Formatter(
+    console_formatter = RussianLevelFormatter(
         fmt="%(asctime)s | %(levelname)s | %(message)s",
         datefmt="%H:%M:%S",
     )

@@ -156,6 +156,40 @@ async def test_gzip_compression_round_trips_real_binary_data() -> None:
 
 
 @pytest.mark.asyncio
+async def test_compression_evaluates_now_expression_in_zip_file_name() -> None:
+    """Use `$now.toFormat()` for both the ZIP entry and generated binary filename."""
+    node = WorkflowNode(
+        id="compress",
+        name="ZIP",
+        type="n8n-nodes-base.compression",
+        typeVersion=1.1,
+        position=(0, 0),
+        parameters={
+            "operation": "compress",
+            "binaryPropertyName": "data",
+            "outputFormat": "zip",
+            "fileName": '={{ "report_" + $now.toFormat("yyyy-LL-dd") + ".json" }}',
+            "binaryPropertyOutput": "archive",
+        },
+    )
+    result = await CompressionExecutor(
+        CompressionParameters.model_validate(node.parameters)
+    ).execute(
+        node,
+        (binary_item(b'{"ok":true}'),),
+        NodeExecutionContext(input_port=None, invocation_number=1, state={}),
+    )
+
+    archive_metadata = result.outputs[0][0].binary["archive"]
+    assert archive_metadata["fileName"].startswith("report_")
+    assert archive_metadata["fileName"].endswith(".json.zip")
+    archive_bytes = base64.b64decode(archive_metadata["data"])
+    with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+        assert archive.namelist() == ["input.bin"]
+        assert archive.read("input.bin") == b'{"ok":true}'
+
+
+@pytest.mark.asyncio
 async def test_zip_decompression_keeps_links_when_archives_expand_differently() -> None:
     """Pair every extracted file with its source archive, even across mixed archive sizes."""
     first_archive = BytesIO()
@@ -203,13 +237,14 @@ async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
     workflow = load_workflow("converters_files.json")
     extract = next(node for node in workflow.nodes if node.name == "Extract")
     extract.parameters["operation"] = "csv"
+    extract.parameters["binaryPropertyName"] = "unpacked_records.csv"
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     csv_result = await WorkflowExecutionEngine(registry).run(
         workflow,
         initial_items={
             "Incoming": [
-                binary_item(b"name,score\nAda,10\nLin,20\n", name="ada.csv"),
-                binary_item(b"name,score\nGrace,30\nKatherine,40\n", name="grace.csv"),
+                binary_item(b"name,score\nAda,10\nLin,20\n", name="records.csv"),
+                binary_item(b"name,score\nGrace,30\nKatherine,40\n", name="records.csv"),
             ]
         },
     )
@@ -231,6 +266,7 @@ async def test_extract_csv_and_pdf_from_real_binary_documents() -> None:
     writer.add_blank_page(width=72, height=72)
     writer.write(pdf_bytes)
     extract.parameters["operation"] = "pdf"
+    extract.parameters["binaryPropertyName"] = "unpacked_blank.pdf"
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     pdf_result = await WorkflowExecutionEngine(registry).run(
         workflow,
@@ -447,15 +483,39 @@ async def test_email_node_sends_through_a_real_local_smtp_server(
     monkeypatch.delenv("SMTP_USERNAME", raising=False)
     monkeypatch.delenv("SMTP_PASSWORD", raising=False)
     workflow = load_workflow("converters_email.json")
-    next(
-        node for node in workflow.nodes if node.type == "n8n-nodes-base.emailSend"
-    ).type_version = type_version
+    email_node = next(node for node in workflow.nodes if node.type == "n8n-nodes-base.emailSend")
+    email_node.type_version = type_version
+    email_node.parameters.update(
+        {
+            "resource": "email",
+            "operation": "send",
+            "emailFormat": "text",
+            "options": {
+                "appendAttribution": False,
+                "fileAttachments": "archive",
+            },
+        }
+    )
     registry = default_node_converter_registry().build_runtime_registry(workflow)
     email_sender = create_email_sender_from_env()
 
     try:
         result = await WorkflowExecutionEngine(registry).run(
             workflow,
+            initial_items={
+                "Manual": [
+                    WorkflowItem(
+                        json={},
+                        binary={
+                            "archive": {
+                                "data": base64.b64encode(b"zip payload").decode("ascii"),
+                                "fileName": "report.zip",
+                                "mimeType": "application/zip",
+                            }
+                        },
+                    )
+                ]
+            },
             services={"email_sender": email_sender},
         )
     finally:
@@ -465,7 +525,13 @@ async def test_email_node_sends_through_a_real_local_smtp_server(
     mail = message_from_bytes(bytes(captured))
     assert mail["To"] == "receiver@example.test"
     assert mail["Subject"] == "Hello Test User"
-    assert "Message for Test User" in mail.get_payload(decode=True).decode()
+    text_part = next(part for part in mail.walk() if part.get_content_type() == "text/plain")
+    assert "Message for Test User" in text_part.get_payload(decode=True).decode()
+    attachments = [part for part in mail.walk() if part.get_filename()]
+    assert len(attachments) == 1
+    assert attachments[0].get_filename() == "report.zip"
+    assert attachments[0].get_content_type() == "application/zip"
+    assert attachments[0].get_payload(decode=True) == b"zip payload"
     receipt = result.terminal_outputs[0].items[0].json_data
     assert receipt["accepted"] == ["receiver@example.test"]
     assert receipt["rejected"] == []

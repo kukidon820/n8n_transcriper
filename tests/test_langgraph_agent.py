@@ -276,7 +276,7 @@ async def test_public_workflow_ai_support_is_backend_specific() -> None:
     for name in (AI_AGENT_NAME, AI_MODEL_NAME, AI_TOOL_NAME, AI_MEMORY_NAME):
         assert name not in langgraph_manual_changes
     assert "07 · Code — собрать CSV" in langgraph_manual_changes
-    assert "09 · Email — отправить ZIP" in langgraph_manual_changes
+    assert "fileAttachments" not in langgraph_manual_changes
 
     python_core_project = await PythonCoreGenerator().generate(
         workflow,

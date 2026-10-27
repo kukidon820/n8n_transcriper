@@ -1,12 +1,14 @@
 """Data Table, PostgreSQL и SMTP адаптеры с явным внедрением зависимостей."""
 
+import base64
+import binascii
 import re
 from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
 from ..application.models.email_delivery_result import EmailDeliveryResult
-from ..application.models.outgoing_email import OutgoingEmail
+from ..application.models.outgoing_email import OutgoingEmail, OutgoingEmailAttachment
 from ..application.models.postgres_query_result import PostgresQueryResult
 from ..application.ports.data_table_store import (
     DataTableCondition,
@@ -273,14 +275,19 @@ class EmailSendOptions(_StrictParameters):
     cc_email: str | None = Field(default=None, alias="ccEmail")
     bcc_email: str | None = Field(default=None, alias="bccEmail")
     reply_to: str | None = Field(default=None, alias="replyTo")
+    file_attachments: str | None = Field(default=None, alias="fileAttachments")
+    append_attribution: bool | None = Field(default=None, alias="appendAttribution")
 
 
 class EmailSendParameters(_StrictParameters):
     """SMTP-поля Send Email v2.1 без вложений и шаблонов."""
 
+    resource: Literal["email"] = "email"
+    operation: Literal["send"] = "send"
     from_email: str = Field(alias="fromEmail", min_length=1)
     to_email: str = Field(alias="toEmail", min_length=1)
     subject: str
+    email_format: Literal["text", "html", "both"] = Field(default="text", alias="emailFormat")
     text: str | None = None
     html: str | None = None
     options: EmailSendOptions = Field(default_factory=EmailSendOptions)
@@ -315,7 +322,7 @@ class EmailSendExecutor:
             )
         output: list[WorkflowItem] = []
         for item_index, item in enumerate(items):
-            receipt = await sender.send(self._create_message(item, item_index, context))
+            receipt = await sender.send(self._create_message(node, item, item_index, context))
             if not isinstance(receipt, EmailDeliveryResult):
                 raise UnsupportedNodeConfigurationError(
                     "EmailSender.send() должен вернуть EmailDeliveryResult."
@@ -327,7 +334,7 @@ class EmailSendExecutor:
         )
 
     def _create_message(
-        self, item: WorkflowItem, item_index: int, context: NodeExecutionContext
+        self, node: WorkflowNode, item: WorkflowItem, item_index: int, context: NodeExecutionContext
     ) -> OutgoingEmail:
         """Вычислить n8n expressions и построить типизированное письмо."""
         sender = self._evaluate(self._parameters.from_email, item, item_index, context)
@@ -337,6 +344,10 @@ class EmailSendExecutor:
             raise UnsupportedNodeConfigurationError("From, To и Subject должны быть строками.")
         text_body = self._evaluate(self._parameters.text, item, item_index, context)
         html_body = self._evaluate(self._parameters.html, item, item_index, context)
+        if self._parameters.email_format == "text":
+            html_body = None
+        elif self._parameters.email_format == "html":
+            text_body = None
         cc = self._resolve_optional_addresses(
             self._parameters.options.cc_email, item, item_index, context
         )
@@ -350,6 +361,15 @@ class EmailSendExecutor:
             raise UnsupportedNodeConfigurationError("Поле Email text должно быть строкой.")
         if html_body is not None and not isinstance(html_body, str):
             raise UnsupportedNodeConfigurationError("Поле Email html должно быть строкой.")
+        add_attribution = self._parameters.options.append_attribution
+        if add_attribution is None:
+            add_attribution = node.type_version >= 2.1
+        if add_attribution:
+            attribution = "This email was sent automatically with n8n"
+            if text_body is not None:
+                text_body = f"{text_body}\n\n{attribution}"
+            if html_body is not None:
+                html_body = f"{html_body}<p>{attribution}</p>"
         return OutgoingEmail(
             from_email=sender,
             to=tuple(_email_addresses(recipients)),
@@ -359,7 +379,37 @@ class EmailSendExecutor:
             subject=subject,
             text=text_body,
             html=html_body,
+            attachments=self._resolve_attachments(item),
         )
+
+    def _resolve_attachments(self, item: WorkflowItem) -> tuple[OutgoingEmailAttachment, ...]:
+        """Decode the n8n binary properties selected by `options.fileAttachments`."""
+        names = self._parameters.options.file_attachments
+        if names is None or not names.strip():
+            return ()
+        attachments: list[OutgoingEmailAttachment] = []
+        for property_name in (name.strip() for name in names.split(",")):
+            if not property_name:
+                continue
+            metadata = (item.binary or {}).get(property_name)
+            if not isinstance(metadata, dict) or not isinstance(metadata.get("data"), str):
+                raise UnsupportedNodeConfigurationError(
+                    f"Email-вложение {property_name!r} отсутствует во входном binary item."
+                )
+            try:
+                content = base64.b64decode(metadata["data"], validate=True)
+            except (ValueError, binascii.Error) as error:
+                raise UnsupportedNodeConfigurationError(
+                    f"Email-вложение {property_name!r} содержит неверные base64-данные."
+                ) from error
+            attachments.append(
+                OutgoingEmailAttachment(
+                    file_name=str(metadata.get("fileName") or property_name),
+                    mime_type=str(metadata.get("mimeType") or "application/octet-stream"),
+                    content=content,
+                )
+            )
+        return tuple(attachments)
 
     def _resolve_optional_addresses(
         self,
